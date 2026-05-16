@@ -1,0 +1,8 @@
+{
+  "name": "LyricFlow Ebook Reader",
+  "description": "A mobile-first ebook reader with synchronized audio playback and Apple Music-style lyrics scrolling and highlighting.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

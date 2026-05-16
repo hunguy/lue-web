@@ -156,6 +156,12 @@ async def main():
         help='Open the keyboard shortcuts navigation guide'
     )
     
+    parser.add_argument(
+        '-w', '--web',
+        action='store_true',
+        help='Start the web server interface instead of the terminal UI'
+    )
+    
     parser.add_argument("file_path", nargs='?', help="Path to the eBook file (.epub, .pdf, .txt, etc.). If not provided, opens the last book you were reading.")
     parser.add_argument(
         "-f",
@@ -337,6 +343,16 @@ async def main():
 
 def cli():
     """Synchronous entry point for the command-line interface."""
+    import sys
+    if '--web' in sys.argv or '-w' in sys.argv:
+        from rich.console import Console
+        console = Console()
+        console.print("[green]Starting Lue web server on http://localhost:8000[/green]")
+        import uvicorn
+        from .web import app as web_app
+        uvicorn.run(web_app, host="0.0.0.0", port=8000)
+        return
+        
     try:
         asyncio.run(main())
     except (KeyboardInterrupt, SystemExit):

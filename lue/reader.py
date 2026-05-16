@@ -31,6 +31,7 @@ class Lue:
         """Initialize basic application state."""
         self.running = True
         self.command = None
+        self.pending_commands = []
         self.playback_processes = []
         self.producer_task = None
         self.player_task = None
@@ -42,6 +43,7 @@ class Lue:
         self.audio_restart_lock = asyncio.Lock()
         self.pending_restart_task = None
         self.playback_speed = 1.0  # Default speed multiplier
+        self.audio_generation = 0
         
         # Add pause toggle lock and task tracking
         self.pause_toggle_lock = asyncio.Lock()
@@ -198,7 +200,7 @@ class Lue:
             asyncio.run_coroutine_threadsafe(self._post_command(cmd), self.loop)
 
     async def _post_command(self, cmd):
-        self.command = cmd
+        self.pending_commands.append(cmd)
         self.command_received_event.set()
 
     def _is_position_visible(self, chapter_idx, paragraph_idx, sentence_idx):
@@ -828,11 +830,15 @@ class Lue:
     async def _restart_audio_after_navigation(self):
         """Restart audio after navigation, preventing concurrent executions."""
         async with self.audio_restart_lock:
-            # Cancel any pending restart task
-            if self.pending_restart_task and not self.pending_restart_task.done():
-                self.pending_restart_task.cancel()
+            self.audio_generation += 1
+            current_task = asyncio.current_task()
+            old_restart_task = self.pending_restart_task
+            if (old_restart_task and
+                old_restart_task is not current_task and
+                not old_restart_task.done()):
+                old_restart_task.cancel()
                 try:
-                    await self.pending_restart_task
+                    await old_restart_task
                 except asyncio.CancelledError:
                     pass
             
@@ -1123,7 +1129,6 @@ class Lue:
         
         await audio.stop_and_clear_audio(self)
         self._save_extended_progress()
-        logging.info("--- Application Shutting Down ---")
         # Disable mouse reporting and restore terminal
         sys.stdout.write('\033[?1002l\033[2J\033[H\033[?25h')
         sys.stdout.flush()
@@ -1185,9 +1190,11 @@ class Lue:
         while self.running:
             await self.command_received_event.wait()
             self.command_received_event.clear()
-            cmd = self.command
-            self.command = None
+            cmd = self.pending_commands.pop(0) if self.pending_commands else None
             if not cmd: continue
+            
+            if self.pending_commands:
+                self.command_received_event.set()
             
             if cmd == 'toggle_recent_menu':
                 self.show_recent_menu = not self.show_recent_menu
@@ -1241,7 +1248,17 @@ class Lue:
                 if command_name == '_update_highlight':
                     if not self.is_paused: self.chapter_idx, self.paragraph_idx, self.sentence_idx = data
                 elif command_name == '_new_sentence_started':
-                    c, p, s, duration, timing_data = data
+                    if len(data) == 5:
+                        c, p, s, duration, timing_data = data
+                        audio_file = None
+                        generation = None
+                    elif len(data) == 6:
+                        c, p, s, duration, timing_data, audio_file = data
+                        generation = None
+                    else:
+                        c, p, s, duration, timing_data, audio_file, generation = data
+                    if generation is not None and generation != self.audio_generation:
+                        continue
                     
                     # Update sentence position
                     self.chapter_idx, self.paragraph_idx, self.sentence_idx = c, p, s

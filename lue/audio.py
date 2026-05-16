@@ -206,7 +206,7 @@ async def _producer_loop(reader):
                     from .timing_calculator import process_tts_timing_data
                     timing_info = process_tts_timing_data(original_text, [], duration)
                 
-                await asyncio.wait_for(reader.audio_queue.put((output_filename, *producer_pos, duration, timing_info)), timeout=1.0)
+                await asyncio.wait_for(reader.audio_queue.put((output_filename, *producer_pos, duration, timing_info, reader.audio_generation)), timeout=1.0)
                 
                 next_pos = reader._advance_position(producer_pos, wrap=False)
                 if merged:
@@ -246,8 +246,12 @@ async def _player_loop(reader):
                         await asyncio.gather(*reader.active_playback_tasks, return_exceptions=True)
                     reader.playback_finished_event.set()
                     break
-                # Unpack the queue item
-                audio_file, c, p, s, duration, timing_data = item
+                # Unpack the queue item (handle both old and new formats)
+                if len(item) == 7:
+                    audio_file, c, p, s, duration, timing_data, generation = item
+                else:
+                    audio_file, c, p, s, duration, timing_data = item
+                    generation = None
                 if isinstance(timing_data, dict):
                     timing_info = timing_data
                 else:
@@ -257,20 +261,30 @@ async def _player_loop(reader):
                 word_timings = timing_info.get("word_timings", [])
                 
                 if not os.path.exists(audio_file):
+                    logging.warning(f"[AUDIO] Audio file not found: {audio_file}")
                     reader.audio_queue.task_done()
                     continue
                 if duration is None or duration <= 0:
+                    logging.warning(f"[AUDIO] Invalid duration: {duration}")
                     reader.audio_queue.task_done()
                     continue
                 try:
                     # Post a command to the main loop to handle the state transition atomically
                     reader.loop.call_soon_threadsafe(
                         reader._post_command_sync,
-                        ('_new_sentence_started', (c, p, s, duration, timing_data))
+                        ('_new_sentence_started', (c, p, s, duration, timing_data, audio_file, generation))
                     )
                 except RuntimeError:
                     reader.audio_queue.task_done()
                     break
+                
+                if getattr(reader, 'is_web', False):
+                    # In web mode, the frontend plays the audio.
+                    # We still wait for the duration so the producer doesn't outpace us.
+                    await asyncio.sleep(duration / reader.playback_speed)
+                    reader.audio_queue.task_done()
+                    continue
+
                 try:
                     # Build ffplay command with speed control using atempo filter
                     cmd = ['ffplay', '-nodisp', '-autoexit', '-loglevel', 'error']
