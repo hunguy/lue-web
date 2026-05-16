@@ -7,37 +7,38 @@ import {
   Volume2, 
   MessageSquare, 
   Share2, 
-  ListMusic, 
-  MoreHorizontal, 
-  Star 
+  ListMusic 
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import Bookshelf from './Bookshelf';
 
 const formatTime = (seconds: number) => {
   const totalSeconds = Math.floor(seconds);
-  const minutes = Math.floor(totalSeconds / 60);
-  const secs = totalSeconds % 60;
-  return `${minutes}:${secs.toString().padStart(2, '0')}`;
+  const h = Math.floor(totalSeconds / 3600);
+  const m = Math.floor((totalSeconds % 3600) / 60);
+  const s = totalSeconds % 60;
+  if (h > 0) {
+    return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+  }
+  return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
 };
 
 const Word = memo(({ 
   wordText, 
   isActive, 
-  isPast, 
   start, 
   end, 
   currentTime, 
   onClick 
 }: any) => {
   const isWordActive = isActive && currentTime >= start && currentTime < end;
-  const isWordPast = isPast || (isActive && currentTime >= end);
+  const isWordPast = isActive && currentTime >= end;
   
   const className = `word text-4xl md:text-6xl font-bold cursor-pointer transition-all duration-400 ${
     isWordActive 
       ? 'opacity-100 blur-0 scale-110 text-white' 
-      : isWordPast 
-        ? 'opacity-60 blur-0 scale-100 text-white/80' 
+      : isActive
+        ? 'opacity-60 blur-0 scale-100 text-white/80'
         : 'opacity-20 blur-[2px] scale-95 text-white/30'
   }`;
 
@@ -60,7 +61,6 @@ const Sentence = memo(({
   line, 
   sIdx, 
   isActive, 
-  isPast, 
   currentTime, 
   onWordClick,
   activeLineRef
@@ -96,7 +96,6 @@ const Sentence = memo(({
               key={wIdx}
               wordText={wordText}
               isActive={isActive}
-              isPast={isPast}
               start={start}
               end={end}
               currentTime={isActive ? currentTime : 0}
@@ -120,6 +119,8 @@ export default function App() {
   const [currentTime, setCurrentTime] = useState(0);
   const [isUserScrolling, setIsUserScrolling] = useState(false);
   const [showControls, setShowControls] = useState(true);
+  const [hoverTime, setHoverTime] = useState<number | null>(null);
+  const [hoverPos, setHoverPos] = useState(0);
 
   const [sentences, setSentences] = useState<any[]>([]);
   const [currentPos, setCurrentPos] = useState({c: -1, p: -1, s: -1});
@@ -171,7 +172,7 @@ export default function App() {
       setBookInfo(data);
       setIsReading(true);
       setSentences([]);
-      setCurrentPos({ c: 0, p: 0, s: 0 });
+      // Do not reset currentPos here, let WebSocket provide it
       setIsPlaying(true);
     } catch (err) {
       console.error(err);
@@ -356,14 +357,59 @@ export default function App() {
 
   const chapterSentences = useMemo(() => sentences.filter(s => s.c === currentPos.c), [sentences, currentPos.c]);
   const chapterSentenceCount = chapterSentences.length;
+  
+  const sentenceDurations = useMemo(() => {
+    return chapterSentences.map(s => s.duration || 5);
+  }, [chapterSentences]);
+
+  const totalChapterDuration = useMemo(() => {
+    return sentenceDurations.reduce((a, b) => a + b, 0);
+  }, [sentenceDurations]);
+
   const currentSentenceIndexInChapter = useMemo(() => chapterSentences.findIndex(s => s.c === currentPos.c && s.p === currentPos.p && s.s === currentPos.s), [chapterSentences, currentPos]);
-  const chapterProgress = chapterSentenceCount > 0 ? Math.min(100, ((currentSentenceIndexInChapter + (currentTime / (sentences[currentSentenceIndex]?.duration || 1))) / chapterSentenceCount) * 100) : 0;
+
+  const elapsedChapterTime = useMemo(() => {
+    if (currentSentenceIndexInChapter === -1) return 0;
+    const prevSentencesDuration = sentenceDurations.slice(0, currentSentenceIndexInChapter).reduce((a, b) => a + b, 0);
+    return prevSentencesDuration + currentTime;
+  }, [sentenceDurations, currentSentenceIndexInChapter, currentTime]);
+
+  const chapterProgress = totalChapterDuration > 0 ? Math.min(100, (elapsedChapterTime / totalChapterDuration) * 100) : 0;
+
+  const updateHoverState = (clientX: number, clientY: number) => {
+    if (!progressBarRef.current || chapterSentenceCount === 0) return;
+    const rect = progressBarRef.current.getBoundingClientRect();
+    
+    // Check vertical distance (20px)
+    const distY = Math.abs(clientY - (rect.top + rect.height / 2));
+    if (distY > 20) {
+      setHoverTime(null);
+      return;
+    }
+    
+    const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+    const estimatedTime = ratio * totalChapterDuration;
+    setHoverTime(estimatedTime);
+    setHoverPos(clientX - rect.left);
+  };
 
   const handleProgressBarSeek = (clientX: number) => {
     if (!progressBarRef.current || chapterSentenceCount === 0) return;
     const rect = progressBarRef.current.getBoundingClientRect();
     const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-    const targetIndex = Math.floor(ratio * chapterSentenceCount);
+    
+    let targetIndex = 0;
+    let accumulated = 0;
+    const targetTime = ratio * totalChapterDuration;
+    for (let i = 0; i < sentenceDurations.length; i++) {
+      accumulated += sentenceDurations[i];
+      if (accumulated >= targetTime) {
+        targetIndex = i;
+        break;
+      }
+      targetIndex = i;
+    }
+
     const targetSentence = chapterSentences[Math.min(targetIndex, chapterSentenceCount - 1)];
     if (!targetSentence) return;
     if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
@@ -378,14 +424,19 @@ export default function App() {
   };
 
   const handleProgressMouseDown = (e: React.MouseEvent) => { e.stopPropagation(); isDraggingRef.current = true; handleProgressBarSeek(e.clientX); };
-  const handleProgressMouseMove = (e: MouseEvent) => { if (isDraggingRef.current) handleProgressBarSeek(e.clientX); };
+  const handleProgressMouseMove = (e: MouseEvent) => { 
+    if (isDraggingRef.current) handleProgressBarSeek(e.clientX); 
+    updateHoverState(e.clientX, e.clientY);
+  };
   const handleProgressMouseUp = () => { isDraggingRef.current = false; };
+  const handleProgressBarMouseEnter = (e: React.MouseEvent) => { updateHoverState(e.clientX, e.clientY); };
+  const handleProgressBarMouseLeave = () => { setHoverTime(null); };
 
   useEffect(() => {
     window.addEventListener('mousemove', handleProgressMouseMove);
     window.addEventListener('mouseup', handleProgressMouseUp);
     return () => { window.removeEventListener('mousemove', handleProgressMouseMove); window.removeEventListener('mouseup', handleProgressMouseUp); };
-  }, [chapterSentenceCount, chapterSentences, sentences]);
+  }, [totalChapterDuration, chapterSentences, sentenceDurations]);
 
   const togglePlayPause = (e: any) => {
     e.stopPropagation();
@@ -400,27 +451,40 @@ export default function App() {
   if (!isReading) return <Bookshelf onOpenBook={handleOpenBook} />;
 
   return (
-    <div className="relative h-full w-full overflow-hidden font-sans select-none">
+    <div className="relative h-full w-full flex flex-col overflow-hidden font-sans select-none">
       <div id="background-gradient" />
-      <div className="relative z-10 flex items-center justify-between px-8 py-8">
-        <div className="flex items-center gap-5">
-          <motion.img initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} src="https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?q=80&w=1000&auto=format&fit=crop" alt="Cover" className="w-[60px] h-[60px] rounded-lg shadow-[0_8px_16px_rgba(0,0,0,0.5)]" />
-          <div>
-            <h1 className="text-white font-bold text-xl tracking-tight leading-tight">{bookInfo?.title || "Reading"}</h1>
-            <p className="text-white/50 text-sm font-medium uppercase tracking-widest">Lue Reader</p>
+      <div className="relative z-10 flex flex-col gap-4 px-8 pt-6 pb-4 shrink-0">
+        <div className="flex">
+          <button className="text-white/20 hover:text-white/60 transition-colors text-[9px] font-bold uppercase tracking-[0.2em] border border-white/5 px-2.5 py-1 rounded-full" onClick={() => { setIsReading(false); audioRef.current?.pause(); wsRef.current?.close(); }}>
+            Back
+          </button>
+        </div>
+        <div className="flex items-center gap-6">
+          <motion.img initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} src="https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?q=80&w=1000&auto=format&fit=crop" alt="Cover" className="w-[80px] h-[80px] rounded-xl shadow-2xl shrink-0" />
+          <div className="flex-1 min-w-0">
+            <div className="overflow-hidden whitespace-nowrap relative">
+              <div className="inline-block animate-marquee hover:pause-animation">
+                <h1 className="text-white font-bold text-3xl tracking-tight leading-tight inline-block mr-12">
+                  {bookInfo?.title || "Reading"}
+                </h1>
+                <h1 className="text-white font-bold text-3xl tracking-tight leading-tight inline-block mr-12">
+                  {bookInfo?.title || "Reading"}
+                </h1>
+              </div>
+            </div>
+            <div className="flex justify-between items-center w-full mt-2">
+              <p className="text-white/50 text-lg font-semibold uppercase tracking-wider truncate mr-8">{bookInfo?.author || "UNKNOWN AUTHOR"}</p>
+              <p className="text-white/50 text-sm font-bold uppercase tracking-widest shrink-0 ml-auto">CHAPTER {currentPos.c + 1}/{bookInfo?.chapters || 1}</p>
+            </div>
           </div>
         </div>
-        <div className="flex gap-6 text-white/60">
-          <button className="hover:text-white transition-colors"><Star className="w-6 h-6" /></button>
-          <button className="hover:text-white transition-colors" onClick={() => { setIsReading(false); audioRef.current?.pause(); wsRef.current?.close(); }}><MoreHorizontal className="w-6 h-6" /></button>
-        </div>
       </div>
-      <div className="relative z-10 h-[60%] overflow-y-auto px-10 md:px-20 py-12 lyrics-container" ref={scrollContainerRef} onScroll={handleScroll} style={{ maskImage: 'linear-gradient(to bottom, transparent 0%, black 15%, black 85%, transparent 100%)', WebkitMaskImage: 'linear-gradient(to bottom, transparent 0%, black 15%, black 85%, transparent 100%)' }}>
+      <div className="relative z-10 flex-1 overflow-y-auto px-10 md:px-20 py-12 lyrics-container" ref={scrollContainerRef} onScroll={handleScroll} style={{ maskImage: 'linear-gradient(to bottom, transparent 0%, black 15%, black 85%, transparent 100%)', WebkitMaskImage: 'linear-gradient(to bottom, transparent 0%, black 15%, black 85%, transparent 100%)' }}>
         <div className="flex flex-col gap-12 pb-[30vh]">
           {visibleSentences.map((line: any) => {
             const sIdx = line.originalIdx;
             const isActive = sIdx === currentSentenceIndex;
-            return <Sentence key={`${currentPos.c}-${sIdx}`} line={line} sIdx={sIdx} isActive={isActive} isPast={sIdx < currentSentenceIndex} currentTime={isActive ? currentTime : 0} onWordClick={handleWordClick} activeLineRef={activeLineRef} />;
+            return <Sentence key={`${currentPos.c}-${sIdx}`} line={line} sIdx={sIdx} isActive={isActive} currentTime={isActive ? currentTime : 0} onWordClick={handleWordClick} activeLineRef={activeLineRef} />;
           })}
         </div>
       </div>
@@ -429,12 +493,35 @@ export default function App() {
         {showControls && (
           <motion.div initial={{ opacity: 0, y: 100 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 100 }} transition={{ duration: 0.6, ease: [0.2, 0, 0.2, 1] }} className="absolute bottom-0 left-0 right-0 z-40 control-bar px-8 pt-16 pb-12">
             <div className="max-w-4xl mx-auto">
-              <div className="mb-8">
-                <div ref={progressBarRef} className="relative w-full h-1 bg-white/10 rounded-full overflow-hidden shadow-inner cursor-pointer" onMouseDown={handleProgressMouseDown}>
-                  <motion.div className="absolute h-full bg-white" style={{ width: `${chapterProgress}%` }} transition={{ duration: 0.1, ease: "linear" }} />
+              <div className="mb-8 relative">
+                {hoverTime !== null && (
+                  <div 
+                    className="absolute bottom-full mb-2 bg-white/90 text-black text-[10px] font-bold px-1.5 py-0.5 rounded shadow-lg pointer-events-none -translate-x-1/2 whitespace-nowrap"
+                    style={{ left: `${hoverPos}px` }}
+                  >
+                    {formatTime(hoverTime)}
+                  </div>
+                )}
+                <div
+                  ref={progressBarRef}
+                  className="relative w-full h-1 bg-white/10 rounded-full shadow-inner cursor-pointer"
+                  onMouseDown={handleProgressMouseDown}
+                  onMouseEnter={handleProgressBarMouseEnter}
+                  onMouseLeave={handleProgressBarMouseLeave}
+                  onMouseMove={(e) => updateHoverState(e.clientX, e.clientY)}
+                >
+                  <motion.div 
+                    className="absolute h-full bg-white"
+                    style={{ width: `${chapterProgress}%` }}
+                    transition={{ duration: 0.1, ease: "linear" }}
+                  />
                 </div>
-                <div className="flex justify-between mt-4 text-[11px] font-mono opacity-50 tracking-wider"><span>Chapter {currentPos.c + 1}</span><span>{bookInfo?.chapters || 1} chapters</span></div>
+                <div className="flex justify-between mt-4 text-[11px] font-mono opacity-50 tracking-wider">
+                  <span>{formatTime(elapsedChapterTime)}</span>
+                  <span>-{formatTime(Math.max(0, totalChapterDuration - elapsedChapterTime))}</span>
+                </div>
               </div>
+
               <div className="flex items-center justify-center gap-10 mb-8">
                 {currentPos.c > 0 && <button className="text-white/70 hover:text-white hover:scale-110 active:scale-95 transition-all" onClick={() => { if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) wsRef.current.send(JSON.stringify({ command: 'prev_chapter' })); }}><SkipBack className="w-8 h-8 fill-current" /></button>}
                 <button onClick={togglePlayPause} className="w-16 h-16 flex items-center justify-center text-white hover:scale-110 active:scale-90 transition-all">{isPlaying ? <Pause className="w-10 h-10 fill-current" /> : <Play className="w-10 h-10 fill-current translate-x-[3px]" />}</button>

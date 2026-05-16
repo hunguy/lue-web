@@ -427,6 +427,54 @@ class HTMLtoLines(HTMLParser):
         return line
 
 
+def extract_metadata(file_path):
+    """Extract metadata (title, author) from the file based on its extension."""
+    file_extension = os.path.splitext(file_path)[1].lower()
+    title = os.path.splitext(os.path.basename(file_path))[0]
+    author = "UNKNOWN AUTHOR"
+    
+    if file_extension == '.epub':
+        try:
+            with zipfile.ZipFile(file_path, 'r') as zip_archive:
+                container_data = zip_archive.read('META-INF/container.xml')
+                container_root = ET.fromstring(container_data)
+                rootfile_elem = container_root.find('.//{*}rootfile')
+                if rootfile_elem is None:
+                    rootfile_elem = container_root.find('.//rootfile')
+                if rootfile_elem is not None:
+                    opf_path = rootfile_elem.get('full-path')
+                    if opf_path:
+                        opf_data = zip_archive.read(opf_path)
+                        opf_root = ET.fromstring(opf_data)
+                        
+                        # Find metadata elements using a more robust approach
+                        for elem in opf_root.iter():
+                            tag_local = elem.tag.split('}')[-1].lower() if '}' in elem.tag else elem.tag.lower()
+                            
+                            if tag_local == 'title' and elem.text:
+                                # Prioritize the first title or the one that isn't just the filename
+                                if title == os.path.splitext(os.path.basename(file_path))[0] or len(elem.text.strip()) > len(title):
+                                    title = elem.text.strip()
+                                    
+                            if (elem.tag.endswith('}creator') or elem.tag.endswith('}author') or tag_local == 'creator' or tag_local == 'author') and elem.text:
+                                author = elem.text.strip()
+        except Exception:
+            pass
+            
+    elif file_extension == '.pdf':
+        try:
+            with fitz.open(file_path) as doc:
+                meta = doc.metadata
+                if meta.get('title'):
+                    title = meta['title'].strip()
+                if meta.get('author'):
+                    author = meta['author'].strip()
+        except Exception:
+            pass
+            
+    return {"title": title, "author": author}
+
+
 def extract_content(file_path, console):
     """Extract content from the file based on its extension."""
     file_extension = os.path.splitext(file_path)[1].lower()

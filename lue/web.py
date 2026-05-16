@@ -201,6 +201,7 @@ async def open_book(request: Request):
     # Send book info
     return {
         "title": active_reader.book_title,
+        "author": active_reader.book_author,
         "chapters": len(active_reader.chapters)
     }
 
@@ -210,6 +211,7 @@ async def book_info():
         return {"error": "No active book"}
     return {
         "title": active_reader.book_title,
+        "author": active_reader.book_author,
         "total_sentences": active_reader.total_sentences,
         "current_position": {
             "c": active_reader.chapter_idx,

@@ -48,3 +48,17 @@ html, body, #root {
   display: inline-block;
   transition: all 0.4s cubic-bezier(0.2, 0, 0.2, 1);
 }
+
+@keyframes marquee {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-100%); }
+}
+
+.animate-marquee {
+  animation: marquee 20s linear infinite;
+  padding-left: 0;
+}
+
+.pause-animation {
+  animation-play-state: paused !important;
+}

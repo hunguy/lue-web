@@ -17,8 +17,10 @@ class Lue:
         self.console = Console()
         self.loop = None
         self.file_path = file_path
-        self.book_title = os.path.splitext(os.path.basename(file_path))[0]
-        self.progress_file = progress_manager.get_progress_file_path(self.book_title)
+        metadata = content_parser.extract_metadata(file_path)
+        self.book_title = metadata["title"]
+        self.book_author = metadata["author"]
+        self.progress_file = progress_manager.get_progress_file_path(os.path.splitext(os.path.basename(file_path))[0])
         self.overlap_override = overlap
         
         self._initialize_state()
