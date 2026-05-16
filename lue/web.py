@@ -78,15 +78,20 @@ class WebLue(Lue):
                 self.current_pause_toggle_task = asyncio.create_task(self._handle_pause_toggle())
                 await self.broadcast({"type": "status", "is_paused": self.is_paused})
             elif isinstance(cmd, str) and ('next' in cmd or 'prev' in cmd):
-                # Handle next_sentence, prev_sentence, next_paragraph, prev_paragraph
                 current_pos = (self.chapter_idx, self.paragraph_idx, self.sentence_idx)
                 direction, mode = cmd.split('_')
                 new_pos = self._advance_position(current_pos, mode) if direction == 'next' else self._rewind_position(current_pos, mode)
                 if new_pos:
                     self.chapter_idx, self.paragraph_idx, self.sentence_idx = new_pos
+                    self.ui_chapter_idx, self.ui_paragraph_idx, self.ui_sentence_idx = new_pos
                     self._save_extended_progress(sync_audio_position=True)
-                    self.pending_restart_task = asyncio.create_task(self._restart_audio_after_navigation())
-                    await self.broadcast({"type": "clear_queue"})
+                    more_navigation_pending = any(
+                        isinstance(c, str) and ('next' in c or 'prev' in c)
+                        for c in self.pending_commands
+                    )
+                    if not more_navigation_pending:
+                        self.pending_restart_task = asyncio.create_task(self._restart_audio_after_navigation())
+                        await self.broadcast({"type": "clear_queue"})
             elif isinstance(cmd, tuple):
                 command_name, data = cmd
                 if command_name == '_new_sentence_started':
@@ -234,6 +239,10 @@ async def websocket_endpoint(websocket: WebSocket):
                     active_reader.loop.call_soon_threadsafe(active_reader._post_command_sync, 'next_sentence')
                 elif cmd == "prev_sentence":
                     active_reader.loop.call_soon_threadsafe(active_reader._post_command_sync, 'prev_sentence')
+                elif cmd == "next_chapter":
+                    active_reader.loop.call_soon_threadsafe(active_reader._post_command_sync, 'next_chapter')
+                elif cmd == "prev_chapter":
+                    active_reader.loop.call_soon_threadsafe(active_reader._post_command_sync, 'prev_chapter')
                 elif cmd == "get_current_context":
                     c = active_reader.chapter_idx
                     chapter_data = active_reader.get_chapter_sentences(c)

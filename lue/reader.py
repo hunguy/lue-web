@@ -36,6 +36,7 @@ class Lue:
         self.producer_task = None
         self.player_task = None
         self.ui_update_task = None
+        self.word_update_task = None
         self.command_received_event = asyncio.Event()
         self.playback_finished_event = asyncio.Event()
         self.audio_queue = asyncio.Queue(maxsize=config.MAX_QUEUE_SIZE)
@@ -636,7 +637,8 @@ class Lue:
 
     def _advance_position(self, current_pos, mode='sentence', wrap=True):
         c, p, s = current_pos
-        if mode == 'paragraph': p, s = p + 1, 0
+        if mode == 'chapter': c, p, s = c + 1, 0, 0
+        elif mode == 'paragraph': p, s = p + 1, 0
         else: s += 1
         while c < len(self.chapters):
             if p < len(self.chapters[c]):
@@ -650,7 +652,9 @@ class Lue:
 
     def _rewind_position(self, current_pos, mode='sentence'):
         c, p, s = current_pos
-        if mode == 'paragraph':
+        if mode == 'chapter':
+            c, p, s = c - 1, 0, 0
+        elif mode == 'paragraph':
             p, s = p - 1, 0
         else:
             s -= 1
@@ -678,8 +682,11 @@ class Lue:
 
         # If we've rewound past the beginning, loop to the end
         c = len(self.chapters) - 1
-        p = len(self.chapters[c]) - 1
-        s = len(content_parser.split_into_sentences(self.chapters[c][p])) - 1
+        if mode == 'chapter':
+            p, s = 0, 0
+        else:
+            p = len(self.chapters[c]) - 1
+            s = len(content_parser.split_into_sentences(self.chapters[c][p])) - 1
         return c, p, s
 
     def _get_topmost_visible_sentence(self):

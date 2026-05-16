@@ -107,22 +107,18 @@ async def get_audio_duration(file_path):
 async def play_from_current_position(reader):
     """Start the audio producer and player loops."""
     if not reader.is_paused and reader.running and reader.tts_model:
-        # Cancel existing tasks and wait for them to complete
+        tasks_to_cancel = []
         for task in [reader.producer_task, reader.player_task]:
             if task and not task.done():
                 task.cancel()
-                try: 
-                    await asyncio.wait_for(task, timeout=2.0)
-                except (asyncio.CancelledError, asyncio.TimeoutError): 
-                    pass
-        
-        # Ensure tasks are properly cleaned up
+                tasks_to_cancel.append(task)
+        if tasks_to_cancel:
+            await asyncio.gather(*tasks_to_cancel, return_exceptions=True)
+
         reader.producer_task = None
         reader.player_task = None
-        
-        # Small delay to ensure cleanup is complete
         await asyncio.sleep(0.05)
-        
+
         reader.producer_task = asyncio.create_task(_producer_loop(reader))
         reader.player_task = asyncio.create_task(_player_loop(reader))
 
