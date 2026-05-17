@@ -16,13 +16,13 @@ The project is integrating a React-based web frontend (`lyricflow-ebook-reader`)
   - React + Vite + TailwindCSS + Motion (Framer Motion).
   - **Bookshelf (`Bookshelf.tsx`)**: 
     - Minimalist, cinematic layout with immersive background.
-    - **Swipe Actions**: Apple Mail-style swipe-left to reveal **Edit** and **Delete** buttons. Uses a horizontal flex row where buttons are initially off-screen.
-    - **Dynamic Covers**: Displays extracted book covers or a minimalist fallback (outlined first letter of the title).
-    - **Management Modals**: Immersive modals for editing book metadata (Title, Author, TTS Voice) and confirming deletion.
+    - **Swipe Actions**: Apple Mail-style swipe-left to reveal **Edit** and **Delete** buttons.
+    - **Dynamic Covers**: Displays extracted book covers or a minimalist fallback.
   - **Reader (`App.tsx`)**: 
-    - **Lazy Window** strategy for high-performance rendering of large chapters.
-    - Apple Music-style lyrics highlighting and synchronization.
-    - Cinematic controls with interactive progress bar and smart chapter selection.
+    - **Custom Scroll Physics**: Uses a `useSmoothScroll` hook with `requestAnimationFrame` and `circOut` easing to bypass browser smooth-scroll latency.
+    - **Anticipatory Auto-Scroll**: Looks ahead 250ms before the current sentence ends to start moving the screen to the next position.
+    - **High-Performance Word Highlighting**: Only the active word re-renders; the rest of the sentence is perfectly memoized.
+    - **Stepped Lazy Window**: Synchronously updates the DOM window (100 sentences) during render to prevent UI flashes.
 
 ## Deployment
 - **Docker**: The project includes a `Dockerfile` and `docker-compose.yml` for easy deployment on remote VMs.
@@ -31,44 +31,29 @@ The project is integrating a React-based web frontend (`lyricflow-ebook-reader`)
   - The application defaults to port **26516**, configurable via the `PORT` environment variable.
   - To deploy: `docker-compose up -d --build`.
 
-## Gotchas & Learnings (Crucial for Future Agents)
+## Performance Learnings (The "No Stones Unturned" Audit)
 
-### 1. Browser Audio Caching
+### 1. The Scroll Lag Root Cause
+The perceived "delayed scroll" was caused by a combination of the browser's slow smooth-scroll acceleration and "React Reconciliation Bloat". When passing `currentTime` to all words in a sentence, React had to check 50-100 components 30 times a second, which introduced micro-stutter exactly during the critical frame where a new sentence started.
+* **Fix**: Use a manual `requestAnimationFrame` loop for scrolling and local state calculation for active words.
+
+### 2. UI Flash & "Blank Screen"
+Jumping chapters or seeking long distances caused a "blank screen" because the window of visible sentences was being updated in an asynchronous `useEffect`.
+* **Fix**: Moved windowing logic into the synchronous render phase. The active sentence is now guaranteed to be in the DOM before the first pixel is painted.
+
+### 3. Browser Audio Caching
 Browsers aggressively cache audio files. When the backend reuses buffer filenames, the browser plays stale audio.
 * **Fix**: Append a timestamp query parameter to the audio URL (`?t={time.time()}`).
 
-### 2. Audio Player Race Conditions during "Seek"
-If a seek is requested while an old audio URL is active, the browser might fire `loadeddata` for the wrong file.
-* **Fix**: Aggressively wipe `audio_url` from state as soon as a `seek` is requested.
-
-### 3. Frontend Scaling & The 30k DOM Bottleneck
-Rendering 30,000+ words freezes the React reconciliation loop if they all receive `currentTime` updates.
-* **Fix**: Use a **Lazy Window** (~40 sentences) and **Selective Prop Passing**.
-
-### 4. Swipe Gestures & Pointer Events
-Implementing swipe actions in a list can lead to accidental clicks.
-* **Fix**: Use `drag="x"` on a container holding both the item and its actions. Use `onTap` (Framer Motion) on the item itself to separate swipe intent from click intent. A `dragActiveRef` combined with a small debounce (100ms) is used to explicitly block taps if any movement occurred.
-
-### 5. Metadata Persistence & "Merge-on-Save"
-Blindly writing reading progress to JSON will wipe out custom metadata (custom titles, authors, voices).
-* **Fix**: `save_extended_progress` now performs an `update()` on existing JSON data rather than overwriting it, ensuring that library management data and reading state coexist safely.
-
-### 6. Initialization Order & Error Handling
-Metadata overrides from `.progress.json` must be resolved *before* book content loading or UI logging begins.
-* **Fix**: Moved custom metadata resolution to the very top of `Lue._load_content`.
-* **Server Stability**: Replaced `sys.exit(1)` with `RuntimeError` and wrapped book instantiation in `web.py` to return 400 errors instead of crashing the process.
+### 4. Anticipatory Logic
+Waiting for a WebSocket signal to start scrolling is too late for a "premium" feel.
+* **Fix**: The frontend now proactively monitors audio progress and starts the scroll transition 250ms **before** the sentence actually finishes.
 
 ## Current State & Recent UI Updates
-- **Bookshelf Redesign**: 
-  - **Swipe-to-Reveal**: Redesigned to physically push the book item off-screen to reveal Edit/Delete buttons in the same row (Apple Mail style).
-  - **Minimalist Layout**: Removed background, border, and shadows from book items and the floating Upload button for a truly flat, cinematic aesthetic.
-  - **Dynamic Covers**: Implemented automatic cover extraction for EPUB and PDF.
-  - **Minimalist Fallback**: Added a beautiful outlined letter fallback for books without covers.
-  - **Upload Flow**: Uploading a book now refreshes the list instead of automatically opening it, allowing for metadata edits first.
-  - **Automatic Sorting**: Books are sorted by most recently read or edited.
-- **UX Refinements**:
-  - **Auto-Play**: Opening a book now automatically starts playback, ensuring a seamless transition from library to reading.
-- **Support for .zip**: Added support for `.zip` files in the content parser, allowing them to be processed as EPUBs if they contain valid eBook structure.
-- **Interaction Polish**: Fixed swipe gestures with `dragActiveRef` to prevent accidental book opening.
+- **Bookshelf Redesign**: Swipe-to-reveal (Apple Mail style), flat aesthetic, and dynamic cover extraction.
+- **Auto-Play**: Opening a book now automatically starts playback, regardless of previous state.
+- **Configurable Port**: Defaults to 26516, respects `PORT` env var.
+- **Support for .zip**: EPUBs inside .zip files are processed automatically.
+- **Interaction Polish**: 400ms snappy transitions, 10vh top breathing room, and cinematic bottom fade masks.
 - **Build Step**: Run `npm run build` in `lyricflow-ebook-reader` whenever React changes are made.
 - **Run**: `python -m lue --web` from the project root.

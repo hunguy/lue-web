@@ -27,15 +27,10 @@ const formatTime = (seconds: number) => {
 
 const Word = memo(({ 
   wordText, 
-  isActive, 
-  start, 
-  end, 
-  currentTime, 
+  isWordActive,
+  isActive,
   onClick 
 }: any) => {
-  const isWordActive = isActive && currentTime >= start && currentTime < end;
-  const isWordPast = isActive && currentTime >= end;
-  
   const className = `word text-4xl md:text-6xl font-bold cursor-pointer transition-all duration-400 ${
     isWordActive 
       ? 'opacity-100 blur-0 scale-110 text-white' 
@@ -71,6 +66,22 @@ const Sentence = memo(({
   const timings = line.timing?.word_timings || [];
   const mapping = line.timing?.word_mapping || [];
 
+  // Calculate active word index locally to avoid passing currentTime to all words
+  const activeWordIdx = useMemo(() => {
+    if (!isActive) return -1;
+    for (let wIdx = 0; wIdx < words.length; wIdx++) {
+      let start = 0, end = 0;
+      if (mapping && mapping[wIdx] !== undefined) {
+         const t = timings[mapping[wIdx]];
+         if (t) { start = t[1]; end = t[2]; }
+      } else if (timings[wIdx]) {
+         start = timings[wIdx][1]; end = timings[wIdx][2];
+      }
+      if (currentTime >= start && currentTime < end) return wIdx;
+    }
+    return -1;
+  }, [isActive, currentTime, words.length, timings, mapping]);
+
   return (
     <div 
       ref={isActive ? activeLineRef : null}
@@ -81,27 +92,12 @@ const Sentence = memo(({
     >
       <div className="flex flex-wrap gap-x-4 gap-y-2">
         {words.map((wordText: string, wIdx: number) => {
-          let start = 0;
-          let end = 0;
-          if (mapping && mapping[wIdx] !== undefined) {
-             const timingInfo = timings[mapping[wIdx]];
-             if (timingInfo && timingInfo.length === 3) {
-                start = timingInfo[1] || 0;
-                end = timingInfo[2] || 0;
-             }
-          } else if (timings && timings[wIdx] && timings[wIdx].length === 3) {
-             start = timings[wIdx][1] || 0;
-             end = timings[wIdx][2] || 0;
-          }
-          
           return (
             <Word 
               key={wIdx}
               wordText={wordText}
+              isWordActive={wIdx === activeWordIdx}
               isActive={isActive}
-              start={start}
-              end={end}
-              currentTime={isActive ? currentTime : 0}
               onClick={(e: any) => {
                 e.stopPropagation();
                 onWordClick(sIdx, wIdx);
@@ -113,6 +109,47 @@ const Sentence = memo(({
     </div>
   );
 });
+
+const useSmoothScroll = (containerRef: React.RefObject<HTMLDivElement>) => {
+  const animationRef = useRef<number | null>(null);
+
+  const scrollTo = useCallback((target: number, duration: number = 600) => {
+    if (!containerRef.current) return;
+    const start = containerRef.current.scrollTop;
+    const startTime = performance.now();
+
+    if (animationRef.current) cancelAnimationFrame(animationRef.current);
+
+    const animate = (now: number) => {
+      const elapsed = now - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      
+      // circOut easing
+      const easedProgress = Math.sqrt(1 - Math.pow(progress - 1, 2));
+      
+      if (containerRef.current) {
+        containerRef.current.scrollTop = start + (target - start) * easedProgress;
+      }
+
+      if (progress < 1) {
+        animationRef.current = requestAnimationFrame(animate);
+      } else {
+        animationRef.current = null;
+      }
+    };
+
+    animationRef.current = requestAnimationFrame(animate);
+  }, [containerRef]);
+
+  const stop = useCallback(() => {
+    if (animationRef.current) {
+      cancelAnimationFrame(animationRef.current);
+      animationRef.current = null;
+    }
+  }, []);
+
+  return { scrollTo, stop };
+};
 
 export default function App() {
   const [isReading, setIsReading] = useState(false);
@@ -178,6 +215,8 @@ export default function App() {
   const isDraggingRef = useRef(false);
   const clearQueueTimeoutRef = useRef<number | null>(null);
 
+  const { scrollTo: smoothScrollTo, stop: stopSmoothScroll } = useSmoothScroll(scrollContainerRef);
+
   useEffect(() => {
     if (!audioRef.current) {
       audioRef.current = new Audio();
@@ -235,6 +274,7 @@ export default function App() {
 
     ws.onmessage = (e) => {
       const data = JSON.parse(e.data);
+      
       if (data.type === 'chapter_data') {
         setSentences(data.sentences);
         setCurrentPos({ c: data.c, p: data.current_p, s: data.current_s });
@@ -344,6 +384,8 @@ export default function App() {
     }
   }, [sentences, currentSentenceIndex, isPlaying]);
 
+  const lastAnticipatedIdx = useRef<number>(-1);
+
   useEffect(() => {
     let intervalId: number;
     if (isPlaying) {
@@ -352,27 +394,25 @@ export default function App() {
           const time = audioRef.current.currentTime;
           setCurrentTime(time);
           
-          // ANTICIPATION LOGIC
-          // If we are within 50ms of the end of the current sentence,
-          // look ahead and start scrolling to the NEXT sentence
+          // ANTICIPATION LOGIC (60fps monitoring)
           const currentSentence = sentences[currentSentenceIndex];
-          if (currentSentence?.duration && !isUserScrolling && scrollContainerRef.current) {
-            if (time >= currentSentence.duration - 0.05) {
-              const nextIdx = currentSentenceIndex + 1;
+          const nextIdx = currentSentenceIndex + 1;
+          
+          if (currentSentence?.duration && !isUserScrolling && scrollContainerRef.current && lastAnticipatedIdx.current !== nextIdx) {
+            // Trigger 250ms before the end for a high-acceleration start
+            if (time >= currentSentence.duration - 0.25) {
               const nextElement = scrollContainerRef.current.querySelector(`[data-sidx="${nextIdx}"]`) as HTMLElement;
               if (nextElement) {
+                lastAnticipatedIdx.current = nextIdx;
                 const breathingRoom = window.innerHeight * 0.1;
                 const targetScrollTop = Math.max(0, nextElement.offsetTop - breathingRoom);
                 
-                scrollContainerRef.current.scrollTo({
-                  top: targetScrollTop,
-                  behavior: 'smooth'
-                });
+                smoothScrollTo(targetScrollTop, 600);
               }
             }
           }
         }
-      }, 33);
+      }, 16);
     }
     return () => clearInterval(intervalId);
   }, [isPlaying, sentences, currentSentenceIndex, isUserScrolling]);
@@ -391,26 +431,41 @@ export default function App() {
 
   const useIsomorphicLayoutEffect = typeof window !== 'undefined' ? useLayoutEffect : useEffect;
 
+  const prevWindowStartRef = useRef(windowStart);
+
   useIsomorphicLayoutEffect(() => {
     if (!isUserScrolling && activeLineRef.current && scrollContainerRef.current) {
-      const container = scrollContainerRef.current;
       const element = activeLineRef.current;
-      
       const breathingRoom = window.innerHeight * 0.1; // 10vh
       const targetScrollTop = Math.max(0, element.offsetTop - breathingRoom);
+      const currentScrollTop = scrollContainerRef.current.scrollTop;
+      const distance = Math.abs(currentScrollTop - targetScrollTop);
       
-      // Calculate distance to determine if we should jump or smooth scroll
-      const distance = Math.abs(container.scrollTop - targetScrollTop);
-      
-      container.scrollTo({
-        top: targetScrollTop,
-        behavior: distance > 300 ? 'instant' : 'smooth'
-      });
+      // If the window shifted, we MUST jump instantly to avoid seeing the shift
+      if (prevWindowStartRef.current !== windowStart) {
+        stopSmoothScroll();
+        scrollContainerRef.current.scrollTop = targetScrollTop;
+        prevWindowStartRef.current = windowStart;
+        return;
+      }
+
+      // If we are already extremely close, skip to avoid micro-jitter
+      if (distance < 1) return;
+
+      if (distance > 300) {
+        // Large distance (chapter jump, seek): Instant
+        stopSmoothScroll();
+        scrollContainerRef.current.scrollTop = targetScrollTop;
+      } else {
+        // Short distance (next sentence): Smooth
+        smoothScrollTo(targetScrollTop, 600);
+      }
     }
   }, [currentSentenceIndex, isUserScrolling, windowStart]);
 
   const handleScroll = () => {
     setIsUserScrolling(true);
+    stopSmoothScroll();
     if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
     scrollTimeoutRef.current = window.setTimeout(() => {
       setIsUserScrolling(false);
