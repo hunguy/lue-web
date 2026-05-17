@@ -96,13 +96,36 @@ async def stop_and_clear_audio(reader):
 
         
 async def get_audio_duration(file_path):
-    """Get the duration of an audio file."""
+    """Get the duration of an audio file with retry logic."""
     command = ['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', file_path]
-    process = await asyncio.create_subprocess_exec(*command, stdout=asyncio.subprocess.PIPE, stderr=subprocess.DEVNULL)
-    stdout, _ = await process.communicate()
-    if process.returncode != 0: return None
-    try: return float(stdout.decode().strip())
-    except (ValueError, TypeError): return None
+    
+    for attempt in range(5):
+        if not os.path.exists(file_path):
+            await asyncio.sleep(0.1)
+            continue
+            
+        process = await asyncio.create_subprocess_exec(*command, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+        stdout, stderr = await process.communicate()
+
+        if process.returncode == 0:
+            try:
+                out_str = stdout.decode().strip()
+                if out_str:
+                    duration = float(out_str)
+                    if duration > 0:
+                        return duration
+                else:
+                    logging.debug(f"ffprobe returned empty output for {file_path}")
+            except (ValueError, TypeError) as e:
+                logging.debug(f"ffprobe output parsing failed for {file_path}: {e}")
+        else:
+            err_str = stderr.decode().strip()
+            logging.debug(f"ffprobe failed for {file_path} (code {process.returncode}): {err_str}")
+
+        
+        await asyncio.sleep(0.1 * (attempt + 1))
+        
+    return None
 
 async def play_from_current_position(reader):
     """Start the audio producer and player loops."""
@@ -177,23 +200,35 @@ async def _producer_loop(reader):
                 # Create sanitized version for TTS
                 sanitized_text = content_parser.sanitize_text_for_tts(original_text)
                 
+                if not sanitized_text:
+                    logging.info(f"Skipping empty sanitized text for pos {producer_pos}: '{original_text[:50]}...'")
+                    next_pos = reader._advance_position(producer_pos, wrap=False)
+                    if not next_pos: break
+                    producer_pos = next_pos
+                    continue
+
                 timing_info = None
                 
                 # Use the timing-aware method if available
                 if hasattr(reader.tts_model, 'generate_audio_with_timing'):
                     try:
                         timing_info = await reader.tts_model.generate_audio_with_timing(sanitized_text, output_filename)
+                        # Extract duration from timing_info to avoid redundant ffprobe call
+                        duration = timing_info.get("total_duration")
                     except Exception as e:
                         # If timing generation fails, fall back to generating without it
                         logging.error(f"TTS timing generation failed for text '{original_text[:50]}...' (sanitized: '{sanitized_text[:50]}...'): {e}")
                         await reader.tts_model.generate_audio(sanitized_text, output_filename)
+                        duration = await get_audio_duration(output_filename)
                 else:
                     # Fallback to regular method
                     await reader.tts_model.generate_audio(sanitized_text, output_filename)
+                    duration = await get_audio_duration(output_filename)
 
-                # Always get the actual duration from the file
-                duration = await get_audio_duration(output_filename)
-                
+                if duration is None or duration <= 0:
+                    size = os.path.getsize(output_filename) if os.path.exists(output_filename) else -1
+                    logging.warning(f"[AUDIO] Producer generated invalid duration ({duration}) for {output_filename}, size={size}")
+
                 if not reader.running: break
                 
                 # If no timing info was generated, create a fallback structure
@@ -261,9 +296,10 @@ async def _player_loop(reader):
                     reader.audio_queue.task_done()
                     continue
                 if duration is None or duration <= 0:
-                    logging.warning(f"[AUDIO] Invalid duration: {duration}")
-                    reader.audio_queue.task_done()
-                    continue
+                    size = os.path.getsize(audio_file) if os.path.exists(audio_file) else -1
+                    logging.warning(f"[AUDIO] Invalid duration {duration} for {audio_file}, size={size}. Using fallback 1.0s")
+                    duration = 1.0
+                
                 try:
                     # Post a command to the main loop to handle the state transition atomically
                     reader.loop.call_soon_threadsafe(

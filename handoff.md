@@ -42,5 +42,14 @@ EPUB metadata (OPF) uses varied namespaces for title and creator tags.
 - **Lyrics**: Immersive styling where only the active sentence is highlighted; all others (past and future) are dimmed to 20% opacity.
 - **Progress Bar**: Show elapsed and remaining `hh:mm:ss`; implemented an interactive hover/drag tooltip with a 20px vertical activation range.
 - **Autoplay**: Books now immediately resume from the last saved position when opened.
+- **Chapter Selection**:
+  - Implemented a "Playlist-style" chapter selection menu (Apple Music style).
+  - Backend extracts and serves chapter titles (where possible) via `extract_content`.
+  - Added **Per-chapter Progress Tracking** in `progress_manager.py` (`chapter_progress` map). User can jump to any chapter and resume from their last position in that specific chapter.
+- **Audio Reliability**:
+  - Implemented exponential backoff and retry for `ffprobe` duration extraction to handle disk flush lag.
+  - Producer now skips empty sanitized text to prevent 0.0 duration generation.
+  - Player provides a 1.0s fallback duration for invalid files to prevent UI hangs.
+- **Data Integrity**: Fixed a crash in `/api/open` due to missing imports and added the missing `chapters` field to `/api/book_info` to ensure UI consistency after page refreshes.
 - **Build Step**: Run `npm run build` in `lyricflow-ebook-reader` whenever React changes are made.
 - **Run**: `python -m lue --web` from the project root.

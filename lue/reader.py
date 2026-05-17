@@ -66,7 +66,15 @@ class Lue:
         """Load and process the document content."""
         if not quiet:
             self.console.print(f"[bold cyan]Loading document: {self.book_title}...[/bold cyan]")
-        self.chapters = content_parser.extract_content(self.file_path, self.console)
+        
+        # Ensure we have metadata for the book title and author
+        metadata = content_parser.extract_metadata(self.file_path)
+        self.book_title = metadata["title"]
+        self.book_author = metadata["author"]
+        
+        chapter_data = content_parser.extract_content(self.file_path, self.console)
+        self.chapters = [c["paragraphs"] for c in chapter_data]
+        self.chapter_titles = [c["title"] for c in chapter_data]
         
         # Check if any content was extracted
         if not self.chapters or not any(chapter for chapter in self.chapters):

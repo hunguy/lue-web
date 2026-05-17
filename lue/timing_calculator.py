@@ -389,7 +389,7 @@ def process_tts_timing_data(
         # If no raw timings provided, estimate from duration
         if not raw_word_timings:
             if total_duration is None:
-                logging.warning("No timing data and no duration provided, using fallback estimation")
+                logging.debug("No timing data and no duration provided, using fallback estimation")
                 total_duration = len(original_text.split()) * 0.3
             
             word_timings = estimate_word_timings_from_duration(original_text, total_duration)

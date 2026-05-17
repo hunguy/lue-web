@@ -68,6 +68,8 @@ class EdgeTTS(TTSBase):
                 for chunk in audio_chunks:
                     f.write(chunk)
             
+            logging.info(f"Edge TTS generated {len(audio_chunks)} chunks and {len(word_timings)} word timings for text: '{text[:50]}...'")
+            
             return word_timings
             
         except Exception as e:

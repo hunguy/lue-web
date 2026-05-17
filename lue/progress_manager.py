@@ -72,7 +72,8 @@ def load_extended_progress(progress_file):
                 "tts_enabled": data.get("tts_enabled", True),
                 "auto_scroll_enabled": data.get("auto_scroll_enabled", True),
                 "manual_scroll_anchor": data.get("manual_scroll_anchor", None),
-                "playback_speed": data.get("playback_speed", 1.0)
+                "playback_speed": data.get("playback_speed", 1.0),
+                "chapter_progress": data.get("chapter_progress", {})
             }
     except (json.JSONDecodeError, IOError):
         return default_progress
@@ -87,28 +88,37 @@ def save_progress(progress_file, chapter_idx, paragraph_idx, sentence_idx):
         paragraph_idx: Current paragraph index
         sentence_idx: Current sentence index
     """
-    progress = {"c": chapter_idx, "p": paragraph_idx, "s": sentence_idx}
+    # Load existing to preserve chapter_progress if any
+    try:
+        with open(progress_file, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+    except:
+        data = {}
+        
+    data["c"] = chapter_idx
+    data["p"] = paragraph_idx
+    data["s"] = sentence_idx
+    
+    # Update chapter_progress
+    if "chapter_progress" not in data:
+        data["chapter_progress"] = {}
+    data["chapter_progress"][str(chapter_idx)] = [paragraph_idx, sentence_idx]
+    
     with open(progress_file, 'w', encoding='utf-8') as f:
-        json.dump(progress, f, indent=2)
+        json.dump(data, f, indent=2)
 
 def save_extended_progress(progress_file, chapter_idx, paragraph_idx, sentence_idx, 
                           scroll_offset, tts_enabled, auto_scroll_enabled, manual_scroll_anchor=None, original_file_path=None, playback_speed=1.0, percentage=0.0):
     """
     Save extended reading progress including UI state.
-    
-    Args:
-        progress_file: Path to the progress file
-        chapter_idx: Current chapter index
-        paragraph_idx: Current paragraph index
-        sentence_idx: Current sentence index
-        scroll_offset: Current scroll position
-        tts_enabled: Whether TTS is enabled
-        auto_scroll_enabled: Whether auto-scroll is enabled
-        manual_scroll_anchor: Manual scroll anchor position (optional)
-        original_file_path: Original path to the eBook file (optional)
-        playback_speed: Audio playback speed
-        percentage: Completion percentage (0.0 to 100.0)
     """
+    # Load existing to preserve chapter_progress if any
+    try:
+        with open(progress_file, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+    except:
+        data = {}
+
     progress = {
         "c": chapter_idx,
         "p": paragraph_idx, 
@@ -117,17 +127,21 @@ def save_extended_progress(progress_file, chapter_idx, paragraph_idx, sentence_i
         "tts_enabled": bool(tts_enabled),
         "auto_scroll_enabled": bool(auto_scroll_enabled),
         "playback_speed": float(playback_speed),
-        "completion_percentage": float(percentage)
+        "completion_percentage": float(percentage),
+        "chapter_progress": data.get("chapter_progress", {})
     }
+    
+    # Update chapter_progress
+    if str(chapter_idx) not in progress["chapter_progress"]:
+        progress["chapter_progress"][str(chapter_idx)] = [paragraph_idx, sentence_idx]
+    else:
+        # Update if further? Or just update always.
+        progress["chapter_progress"][str(chapter_idx)] = [paragraph_idx, sentence_idx]
+
     if manual_scroll_anchor:
         progress["manual_scroll_anchor"] = manual_scroll_anchor
     if original_file_path:
         progress["original_file_path"] = original_file_path
-    
-    # Save percentage if provided (default to 0.0 if not in args, but we will add it to args)
-    # Note: The function signature will be updated in the next step to include percentage.
-    # For now, we'll just add it if passed in kwargs or update the signature.
-    # Actually, I should update the signature in the same edit.
         
     with open(progress_file, 'w', encoding='utf-8') as f:
         json.dump(progress, f, indent=2)

@@ -345,6 +345,7 @@ def cli():
     """Synchronous entry point for the command-line interface."""
     import sys
     if '--web' in sys.argv or '-w' in sys.argv:
+        setup_logging()
         from rich.console import Console
         console = Console()
         console.print("[green]Starting Lue web server on http://localhost:8000[/green]")

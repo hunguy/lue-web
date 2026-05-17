@@ -196,13 +196,19 @@ async def open_book(request: Request):
     
     active_reader = WebLue(file_path, tts_instance, config.OVERLAP_SECONDS)
     await active_reader.initialize_tts()
+    # Ensure metadata is loaded
+    active_reader._load_content(quiet=True)
+    active_reader._initialize_progress()
+
+    # Run the reader loop
     asyncio.create_task(active_reader.run())
-    
+
     # Send book info
     return {
         "title": active_reader.book_title,
         "author": active_reader.book_author,
-        "chapters": len(active_reader.chapters)
+        "chapters": len(active_reader.chapters),
+        "chapter_titles": active_reader.chapter_titles
     }
 
 @app.get("/api/book_info")
@@ -212,6 +218,8 @@ async def book_info():
     return {
         "title": active_reader.book_title,
         "author": active_reader.book_author,
+        "chapters": len(active_reader.chapters),
+        "chapter_titles": active_reader.chapter_titles,
         "total_sentences": active_reader.total_sentences,
         "current_position": {
             "c": active_reader.chapter_idx,
@@ -245,6 +253,16 @@ async def websocket_endpoint(websocket: WebSocket):
                     active_reader.loop.call_soon_threadsafe(active_reader._post_command_sync, 'next_chapter')
                 elif cmd == "prev_chapter":
                     active_reader.loop.call_soon_threadsafe(active_reader._post_command_sync, 'prev_chapter')
+                elif cmd == "goto_chapter":
+                    c = data["c"]
+                    # Check for saved progress for this chapter
+                    prog = progress_manager.load_extended_progress(active_reader.progress_file)
+                    ch_prog = prog.get("chapter_progress", {})
+                    p, s = 0, 0
+                    if str(c) in ch_prog:
+                        p, s = ch_prog[str(c)]
+                    
+                    active_reader.loop.call_soon_threadsafe(active_reader._post_command_sync, ('seek', (c, p, s)))
                 elif cmd == "get_current_context":
                     c = active_reader.chapter_idx
                     chapter_data = active_reader.get_chapter_sentences(c)

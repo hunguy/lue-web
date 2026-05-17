@@ -7,7 +7,9 @@ import {
   Volume2, 
   MessageSquare, 
   Share2, 
-  ListMusic 
+  ListMusic,
+  ChevronUp,
+  ChevronDown
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import Bookshelf from './Bookshelf';
@@ -119,6 +121,7 @@ export default function App() {
   const [currentTime, setCurrentTime] = useState(0);
   const [isUserScrolling, setIsUserScrolling] = useState(false);
   const [showControls, setShowControls] = useState(true);
+  const [showChapterList, setShowChapterList] = useState(false);
   const [hoverTime, setHoverTime] = useState<number | null>(null);
   const [hoverPos, setHoverPos] = useState(0);
 
@@ -159,6 +162,18 @@ export default function App() {
     if (!audioRef.current) {
       audioRef.current = new Audio();
     }
+    
+    // Check if a book is already open
+    fetch('/api/book_info')
+      .then(res => res.json())
+      .then(data => {
+        if (!data.error) {
+          setBookInfo(data);
+          setIsReading(true);
+          setIsPlaying(!data.is_paused);
+        }
+      })
+      .catch(err => console.error(err));
   }, []);
 
   const handleOpenBook = async (path: string) => {
@@ -312,12 +327,12 @@ export default function App() {
       if (hideControlsTimeoutRef.current) clearTimeout(hideControlsTimeoutRef.current);
       hideControlsTimeoutRef.current = window.setTimeout(() => {
         setShowControls(false);
-      }, 5000);
+      }, 10000);
     }
     return () => {
       if (hideControlsTimeoutRef.current) clearTimeout(hideControlsTimeoutRef.current);
     };
-  }, [isPlaying, showControls]);
+  }, [isPlaying, showControls, showChapterList]);
 
   useEffect(() => {
     if (!isUserScrolling && activeLineRef.current && scrollContainerRef.current) {
@@ -336,6 +351,18 @@ export default function App() {
     }, 2500);
   };
 
+  const handleChapterClick = (cIdx: number) => {
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({
+        command: 'goto_chapter',
+        c: cIdx
+      }));
+    }
+    setShowChapterList(false);
+    setIsPlaying(true);
+    setShowControls(true);
+  };
+
   const handleWordClick = useCallback((sentenceIdx: number, wIdx: number) => {
     const targetSentence = sentences[sentenceIdx];
     if (!targetSentence) return;
@@ -352,7 +379,6 @@ export default function App() {
       wsRef.current.send(JSON.stringify({ command: 'seek', c: targetSentence.c, p: targetSentence.p, s: targetSentence.s }));
     }
     setIsPlaying(true);
-    setShowControls(true);
   }, [sentences]);
 
   const chapterSentences = useMemo(() => sentences.filter(s => s.c === currentPos.c), [sentences, currentPos.c]);
@@ -479,16 +505,107 @@ export default function App() {
           </div>
         </div>
       </div>
-      <div className="relative z-10 flex-1 overflow-y-auto px-10 md:px-20 py-12 lyrics-container" ref={scrollContainerRef} onScroll={handleScroll} style={{ maskImage: 'linear-gradient(to bottom, transparent 0%, black 15%, black 85%, transparent 100%)', WebkitMaskImage: 'linear-gradient(to bottom, transparent 0%, black 15%, black 85%, transparent 100%)' }}>
-        <div className="flex flex-col gap-12 pb-[30vh]">
-          {visibleSentences.map((line: any) => {
-            const sIdx = line.originalIdx;
-            const isActive = sIdx === currentSentenceIndex;
-            return <Sentence key={`${currentPos.c}-${sIdx}`} line={line} sIdx={sIdx} isActive={isActive} currentTime={isActive ? currentTime : 0} onWordClick={handleWordClick} activeLineRef={activeLineRef} />;
-          })}
-        </div>
+      <div className="relative z-10 flex-1 overflow-hidden">
+        <AnimatePresence mode="wait">
+          {showChapterList ? (
+            <motion.div 
+              key="chapter-list"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 20 }}
+              transition={{ duration: 0.4, ease: "easeOut" }}
+              className="absolute inset-0 z-10 overflow-y-auto px-10 md:px-20 py-8 scrollbar-hide"
+              style={{
+                maskImage: 'linear-gradient(to bottom, transparent 0%, black 15%, black 85%, transparent 100%)',
+                WebkitMaskImage: 'linear-gradient(to bottom, transparent 0%, black 15%, black 85%, transparent 100%)',
+              }}
+            >
+              <div className="flex flex-col gap-2 pb-48">
+                <p className="text-white/40 text-[10px] font-bold uppercase tracking-[0.2em] mb-6 px-3">Chapters</p>
+                {bookInfo?.chapter_titles?.map((title: string, idx: number) => (
+                  <button 
+                    key={idx}
+                    onClick={() => handleChapterClick(idx)}
+                    className="flex items-center gap-4 p-3 rounded-xl transition-all group hover:bg-white/5"
+                  >
+                    <div className="relative w-12 h-12 rounded-lg overflow-hidden shadow-lg shrink-0">
+                      <img src="https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?q=80&w=1000&auto=format&fit=crop" alt="Cover" className="w-full h-full object-cover" />
+                      {idx === currentPos.c && isPlaying && (
+                        <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                          <div className="flex gap-0.5 items-end h-3">
+                            <motion.div animate={{ height: [4, 12, 6, 12, 4] }} transition={{ repeat: Infinity, duration: 0.6 }} className="w-0.5 bg-white" />
+                            <motion.div animate={{ height: [8, 4, 12, 4, 8] }} transition={{ repeat: Infinity, duration: 0.8 }} className="w-0.5 bg-white" />
+                            <motion.div animate={{ height: [6, 10, 4, 10, 6] }} transition={{ repeat: Infinity, duration: 0.7 }} className="w-0.5 bg-white" />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex-1 text-left min-w-0">
+                      <p className={`text-xs font-bold uppercase tracking-widest ${idx === currentPos.c ? 'text-white' : 'text-white/40'}`}>
+                        Chapter {idx + 1}
+                      </p>
+                      {title && (
+                        <p className={`text-sm truncate ${idx === currentPos.c ? 'text-white/90 font-medium' : 'text-white/60 font-normal'}`}>
+                          {title}
+                        </p>
+                      )}
+                    </div>
+                    {idx === currentPos.c && (
+                      <div className="w-2 h-2 rounded-full bg-white shadow-[0_0_8px_white]" />
+                    )}
+                  </button>
+                ))}
+              </div>
+            </motion.div>
+          ) : (
+            <motion.div 
+              key="lyrics"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.4 }}
+              className="absolute inset-0 z-10 overflow-y-auto px-10 md:px-20 py-12 lyrics-container scrollbar-hide"
+              ref={scrollContainerRef}
+              onScroll={handleScroll}
+              style={{
+                maskImage: 'linear-gradient(to bottom, transparent 0%, black 15%, black 85%, transparent 100%)',
+                WebkitMaskImage: 'linear-gradient(to bottom, transparent 0%, black 15%, black 85%, transparent 100%)',
+              }}
+            >
+              <div className="flex flex-col gap-12 pb-[30vh]">
+                {visibleSentences.map((line: any) => {
+                  const sIdx = line.originalIdx;
+                  const isActive = sIdx === currentSentenceIndex;
+                  return <Sentence key={`${currentPos.c}-${sIdx}`} line={line} sIdx={sIdx} isActive={isActive} currentTime={isActive ? currentTime : 0} onWordClick={handleWordClick} activeLineRef={activeLineRef} />;
+                })}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
-      <div className="absolute bottom-0 left-0 right-0 h-[100px] z-50 cursor-pointer" onClick={(e) => { e.stopPropagation(); setShowControls(true); }} />
+      <div 
+        className="absolute bottom-0 left-0 right-0 h-[60px] z-50 pointer-events-none flex items-center justify-center"
+      >
+        <button 
+          className="pointer-events-auto p-4 flex items-center justify-center"
+          onClick={(e) => {
+            e.stopPropagation();
+            if (showControls) {
+              setShowControls(false);
+            } else if (showChapterList) {
+              setShowChapterList(false);
+            } else {
+              setShowControls(true);
+            }
+          }}
+        >
+          { (showControls || showChapterList) ? (
+            <ChevronDown className="w-5 h-5 text-white/20 animate-bounce" />
+          ) : (
+            <ChevronUp className="w-5 h-5 text-white/20 animate-bounce" />
+          )}
+        </button>
+      </div>
       <AnimatePresence>
         {showControls && (
           <motion.div initial={{ opacity: 0, y: 100 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 100 }} transition={{ duration: 0.6, ease: [0.2, 0, 0.2, 1] }} className="absolute bottom-0 left-0 right-0 z-40 control-bar px-8 pt-16 pb-12">
@@ -523,11 +640,37 @@ export default function App() {
               </div>
 
               <div className="flex items-center justify-center gap-10 mb-8">
-                {currentPos.c > 0 && <button className="text-white/70 hover:text-white hover:scale-110 active:scale-95 transition-all" onClick={() => { if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) wsRef.current.send(JSON.stringify({ command: 'prev_chapter' })); }}><SkipBack className="w-8 h-8 fill-current" /></button>}
-                <button onClick={togglePlayPause} className="w-16 h-16 flex items-center justify-center text-white hover:scale-110 active:scale-90 transition-all">{isPlaying ? <Pause className="w-10 h-10 fill-current" /> : <Play className="w-10 h-10 fill-current translate-x-[3px]" />}</button>
-                {bookInfo && currentPos.c < bookInfo.chapters - 1 && <button className="text-white/70 hover:text-white hover:scale-110 active:scale-95 transition-all" onClick={() => { if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) wsRef.current.send(JSON.stringify({ command: 'next_chapter' })); }}><SkipForward className="w-8 h-8 fill-current" /></button>}
+                <button 
+                  className={`transition-all ${currentPos.c > 0 ? 'text-white/70 hover:text-white hover:scale-110 active:scale-95' : 'text-white/10 pointer-events-none'}`} 
+                  onClick={() => { if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) wsRef.current.send(JSON.stringify({ command: 'prev_chapter' })); }}
+                >
+                  <SkipBack className="w-8 h-8 fill-current" />
+                </button>
+                <button 
+                  onClick={togglePlayPause}
+                  className="w-16 h-16 flex items-center justify-center text-white hover:scale-110 active:scale-90 transition-all"
+                >
+                  {isPlaying ? (
+                    <Pause className="w-10 h-10 fill-current" />
+                  ) : (
+                    <Play className="w-10 h-10 fill-current translate-x-[3px]" />
+                  )}
+                </button>
+                <button 
+                  className={`transition-all ${bookInfo && currentPos.c < bookInfo.chapters - 1 ? 'text-white/70 hover:text-white hover:scale-110 active:scale-95' : 'text-white/10 pointer-events-none'}`} 
+                  onClick={() => { if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) wsRef.current.send(JSON.stringify({ command: 'next_chapter' })); }}
+                >
+                  <SkipForward className="w-8 h-8 fill-current" />
+                </button>
               </div>
-              <div className="flex items-center justify-between opacity-40 hover:opacity-100 transition-opacity mt-4 px-2"><button className="hover:text-white transition-colors"><MessageSquare className="w-6 h-6" /></button><button className="hover:text-white transition-colors"><ListMusic className="w-6 h-6" /></button></div>
+              <div className="flex items-center justify-between opacity-40 hover:opacity-100 transition-opacity mt-4 px-2">
+                <button className="hover:text-white transition-colors">
+                  <MessageSquare className="w-6 h-6" />
+                </button>
+                <button className={`transition-colors ${showChapterList ? 'text-white' : 'hover:text-white'}`} onClick={() => setShowChapterList(!showChapterList)}>
+                  <ListMusic className="w-6 h-6" />
+                </button>
+              </div>
             </div>
           </motion.div>
         )}

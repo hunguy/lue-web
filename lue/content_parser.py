@@ -8,6 +8,7 @@ from docx import Document
 from striprtf.striprtf import rtf_to_text
 import subprocess
 import string
+import logging
 from rich.console import Console
 from typing import List, Tuple
 from pathlib import Path
@@ -478,8 +479,12 @@ def extract_metadata(file_path):
 def extract_content(file_path, console):
     """Extract content from the file based on its extension."""
     file_extension = os.path.splitext(file_path)[1].lower()
+    logging.info(f"Extracting content from {file_path} (ext: {file_extension})")
+    
     if file_extension == '.epub':
-        return _extract_content_epub(file_path, console)
+        res = _extract_content_epub(file_path, console)
+        logging.info(f"Extracted {len(res)} chapters from EPUB")
+        return res
     elif file_extension == '.pdf':
         return _extract_content_pdf(file_path, console)
     elif file_extension == '.txt':
@@ -561,10 +566,14 @@ def _extract_content_epub(file_path, console):
         except:
             spine_items = opf_root.findall(".//spine/itemref")
             
+        logging.info(f"Found {len(spine_items)} items in spine")
+            
         for spine_item in spine_items:
             item_id = spine_item.get("idref")
             if item_id in manifest:
                 contents.append(manifest[item_id])
+        
+        logging.info(f"Resolved {len(contents)} content files from manifest")
         
         if not contents:
             console.print("[bold red]Error: No content files found in spine[/bold red]")
@@ -601,7 +610,13 @@ def _extract_content_epub(file_path, console):
                 lines = parser.get_lines()
                 
                 if lines:
-                    chapters.append(lines)
+                    # Heuristic for title: if first line is short, use it as title
+                    title = lines[0] if len(lines[0]) < 100 else f"Chapter {processed_files + 1}"
+                    logging.info(f"Chapter {processed_files + 1} title: '{title[:30]}...' ({len(lines)} lines)")
+                    chapters.append({
+                        "title": title,
+                        "paragraphs": lines
+                    })
                     processed_files += 1
                     
             except Exception as e:
@@ -730,21 +745,29 @@ def _extract_content_pdf(file_path, console):
     doc.close() 
     
     chapters = []
-    current_chapter = []
+    current_chapter_paras = []
+    current_chapter_title = "Introduction"
     
     for paragraph in all_paragraphs:
         if "chapter" in paragraph.lower() and len(paragraph.split()) < 10:
-            if current_chapter:
-                chapters.append(current_chapter)
-            current_chapter = [paragraph]
+            if current_chapter_paras:
+                chapters.append({
+                    "title": current_chapter_title,
+                    "paragraphs": current_chapter_paras
+                })
+            current_chapter_title = paragraph
+            current_chapter_paras = [paragraph]
         else:
-            current_chapter.append(paragraph)
+            current_chapter_paras.append(paragraph)
             
-    if current_chapter:
-        chapters.append(current_chapter)
+    if current_chapter_paras:
+        chapters.append({
+            "title": current_chapter_title,
+            "paragraphs": current_chapter_paras
+        })
         
     if not chapters:
-        return [all_paragraphs]
+        return [{"title": "Document", "paragraphs": all_paragraphs}]
 
     return chapters
 
@@ -780,7 +803,7 @@ def _extract_content_txt(file_path, console):
         console.print("[bold red]No text content found in the TXT file.[/bold red]")
         return []
 
-    return [paragraphs]
+    return [{"title": "Text Content", "paragraphs": paragraphs}]
 
 
 def _extract_content_docx(file_path, console):
@@ -789,12 +812,13 @@ def _extract_content_docx(file_path, console):
     It uses the 'python-docx' library.
     """
     try:
+        from docx import Document
         doc = Document(file_path)
         full_text = "\n".join([para.text for para in doc.paragraphs if para.text and not para.text.isspace()])
         paragraphs = [clean_visual_text(p.strip()) for p in full_text.split('\n') if p.strip()]
         paragraphs = [p for p in paragraphs if p and len(p) > 3]
         
-        return [paragraphs]
+        return [{"title": "Document", "paragraphs": paragraphs}]
     except Exception as e:
         console.print(f"[bold red]Error: Failed to read DOCX file: {e}[/bold red]")
         return []
@@ -804,6 +828,7 @@ def _extract_content_rtf(file_path, console):
     Extracts content from an .rtf file using the 'striprtf' library.
     """
     try:
+        from striprtf.striprtf import rtf_to_text
         with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
             rtf_content = f.read()
             
@@ -814,7 +839,7 @@ def _extract_content_rtf(file_path, console):
         lines = [clean_visual_text(line.strip()) for line in text_content.split('\n') if line.strip()]
         lines = [line for line in lines if line and len(line) > 3]
 
-        return [lines]
+        return [{"title": "Document", "paragraphs": lines}]
     except Exception as e:
         console.print(f"[bold red]Error: Failed to parse RTF file: {e}[/bold red]")
         return []
@@ -838,11 +863,12 @@ def _extract_content_md(file_path, console):
 
     try:
         # Use enhanced raw markdown parsing for better structure preservation
-        return [_parse_raw_markdown(md_content)]
+        return [{"title": "Markdown Content", "paragraphs": _parse_raw_markdown(md_content)}]
         
     except Exception as e:
         # If raw parsing fails, try HTML conversion as fallback
         try:
+            import markdown
             html_content = markdown.markdown(md_content, extensions=['codehilite', 'fenced_code'])
             parser = HTMLtoLines()
             parser.feed(html_content)
@@ -850,7 +876,7 @@ def _extract_content_md(file_path, console):
             
             lines = parser.get_lines()
             if lines:
-                return [lines]
+                return [{"title": "Markdown Content", "paragraphs": lines}]
             else:
                 console.print(f"[bold red]Error parsing Markdown content: {e}[/bold red]")
                 return []
@@ -984,7 +1010,7 @@ def _extract_content_html(file_path, console):
             console.print("[bold red]No text content found in the HTML file.[/bold red]")
             return []
 
-        return [lines]
+        return [{"title": "Web Page", "paragraphs": lines}]
     except Exception as e:
         console.print(f"[bold red]Error: Failed to parse HTML file: {e}[/bold red]")
         return []
