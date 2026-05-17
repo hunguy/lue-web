@@ -372,8 +372,9 @@ export default function App() {
       // Calculate absolute target position
       // We scroll so the element is at the very top of the scrollable area
       // (which is immediately below the header section)
-      // Adding 20px of padding for breathing room
-      const targetScrollTop = Math.max(0, element.offsetTop - 20);
+      // Use a viewport-relative offset (5vh) for breathing room
+      const breathingRoom = window.innerHeight * 0.05;
+      const targetScrollTop = Math.max(0, element.offsetTop - breathingRoom);
       
       container.scrollTo({
         top: targetScrollTop,
