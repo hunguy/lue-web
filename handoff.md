@@ -15,7 +15,7 @@ The project is integrating a React-based web frontend (`lyricflow-ebook-reader`)
   - React + Vite + TailwindCSS + Motion (Framer Motion).
   - **Bookshelf (`Bookshelf.tsx`)**: 
     - Minimalist, cinematic layout with immersive background.
-    - **Swipe Actions**: Apple Mail-style swipe-left to reveal **Edit** and **Delete** buttons.
+    - **Swipe Actions**: Apple Mail-style swipe-left to reveal **Edit** and **Delete** buttons. Uses a horizontal flex row where buttons are initially off-screen.
     - **Management Modals**: Immersive modals for editing book metadata (Title, Author, TTS Voice) and confirming deletion.
   - **Reader (`App.tsx`)**: 
     - **Lazy Window** strategy for high-performance rendering of large chapters.
@@ -38,25 +38,24 @@ Rendering 30,000+ words freezes the React reconciliation loop if they all receiv
 
 ### 4. Swipe Gestures & Pointer Events
 Implementing swipe actions in a list can lead to accidental clicks.
-* **Fix**: Use `drag="x"` with appropriate constraints and `onTap` (Framer Motion) to separate swipe intent from click intent. A `dragActiveRef` is used to explicitly block taps if any movement occurred.
+* **Fix**: Use `drag="x"` on a container holding both the item and its actions. Use `onTap` (Framer Motion) on the item itself to separate swipe intent from click intent. A `dragActiveRef` combined with a small debounce (100ms) is used to explicitly block taps if any movement occurred.
 
 ### 5. Metadata Persistence & "Merge-on-Save"
 Blindly writing reading progress to JSON will wipe out custom metadata (custom titles, authors, voices).
 * **Fix**: `save_extended_progress` now performs an `update()` on existing JSON data rather than overwriting it, ensuring that library management data and reading state coexist safely.
 
-### 6. Initialization Order
+### 6. Initialization Order & Error Handling
 Metadata overrides from `.progress.json` must be resolved *before* book content loading or UI logging begins.
-* **Fix**: Moved custom metadata resolution to the very top of `Lue._load_content` and ensured the `progress_file` path is calculated early in `__init__`.
+* **Fix**: Moved custom metadata resolution to the very top of `Lue._load_content`.
+* **Server Stability**: Replaced `sys.exit(1)` with `RuntimeError` and wrapped book instantiation in `web.py` to return 400 errors instead of crashing the process.
 
 ## Current State & Recent UI Updates
-- **Bookshelf Management**:
-  - Added **Apple Mail-style swipe actions** to all bookshelf entries.
-  - Implemented an **Edit Modal** for customizing Title, Author, and **TTS Voice** (per-book).
-  - Added a **Delete Confirmation Modal** that safely removes the book and its progress.
-- **Redesigned Bookshelf**: 
-  - Minimalist, cinematic layout matching the reader's aesthetic.
-  - Automatic **Sorting**: Books are now sorted by most recently read or edited.
-- **Persistence**: Fixed a critical bug where metadata was being lost during playback; it is now truly persistent.
+- **Bookshelf Redesign**: 
+  - **Swipe-to-Reveal**: Redesigned to physically push the book item off-screen to reveal Edit/Delete buttons in the same row (Apple Mail style).
+  - **Flat Aesthetic**: Removed background, border, and shadows from book items for a cleaner, minimalist look on the gradient background.
+  - **Upload Flow**: Uploading a book now refreshes the list instead of automatically opening it, allowing for metadata edits first.
+  - **Automatic Sorting**: Books are sorted by most recently read or edited.
+- **Support for .zip**: Added support for `.zip` files in the content parser, allowing them to be processed as EPUBs if they contain valid eBook structure.
 - **Interaction Polish**: Fixed swipe gestures with `dragActiveRef` to prevent accidental book opening.
 - **Build Step**: Run `npm run build` in `lyricflow-ebook-reader` whenever React changes are made.
 - **Run**: `python -m lue --web` from the project root.

@@ -227,9 +227,14 @@ async def open_book(request: Request):
     voice = saved_voice if saved_voice else config.TTS_VOICES.get(model_name)
     tts_instance = tts_manager.create_model(model_name, console, voice=voice)
     
-    active_reader = WebLue(file_path, tts_instance, config.OVERLAP_SECONDS)
-    await active_reader.initialize_tts()
-    active_reader._initialize_progress()
+    try:
+        active_reader = WebLue(file_path, tts_instance, config.OVERLAP_SECONDS)
+        await active_reader.initialize_tts()
+        active_reader._initialize_progress()
+    except Exception as e:
+        logging.error(f"Failed to open book {file_path}: {e}")
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail=str(e))
 
     # Run the reader loop
     asyncio.create_task(active_reader.run())

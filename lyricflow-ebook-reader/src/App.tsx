@@ -184,6 +184,12 @@ export default function App() {
         body: JSON.stringify({ path })
       });
       const data = await res.json();
+      
+      if (res.status >= 400) {
+        alert(data.detail || "Failed to open book");
+        return;
+      }
+      
       setBookInfo(data);
       setIsReading(true);
       setSentences([]);
@@ -191,6 +197,7 @@ export default function App() {
       setIsPlaying(true);
     } catch (err) {
       console.error(err);
+      alert("An unexpected error occurred while opening the book.");
     }
   };
 

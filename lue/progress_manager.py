@@ -4,6 +4,7 @@ import os
 import json
 import re
 import glob
+import logging
 from . import config
 
 
@@ -112,7 +113,6 @@ def save_extended_progress(progress_file, chapter_idx, paragraph_idx, sentence_i
     """
     Save extended reading progress including UI state.
     """
-    import logging
     # Load existing to preserve custom metadata and chapter_progress
     try:
         if os.path.exists(progress_file):
@@ -212,7 +212,6 @@ def get_recent_books(limit=5):
 
 def update_book_metadata(original_path, title=None, author=None, voice=None):
     """Update custom metadata for a book in its progress file."""
-    import logging
     book_filename = os.path.splitext(os.path.basename(original_path))[0]
     progress_file = get_progress_file_path(book_filename)
     logging.info(f"[METADATA] Updating {book_filename} - Title: {title}, Author: {author}, Voice: {voice}")
@@ -252,7 +251,6 @@ def delete_book(original_path):
             
         return True
     except Exception as e:
-        import logging
         logging.error(f"Failed to delete book: {e}")
         return False
 

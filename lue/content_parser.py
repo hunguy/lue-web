@@ -481,10 +481,16 @@ def extract_content(file_path, console):
     file_extension = os.path.splitext(file_path)[1].lower()
     logging.info(f"Extracting content from {file_path} (ext: {file_extension})")
     
-    if file_extension == '.epub':
-        res = _extract_content_epub(file_path, console)
-        logging.info(f"Extracted {len(res)} chapters from EPUB")
-        return res
+    if file_extension == '.epub' or file_extension == '.zip':
+        try:
+            res = _extract_content_epub(file_path, console)
+            logging.info(f"Extracted {len(res)} chapters from {file_extension.upper()}")
+            return res
+        except Exception as e:
+            if file_extension == '.zip':
+                logging.warning(f"ZIP file {file_path} does not appear to be a valid EPUB: {e}")
+            else:
+                raise e
     elif file_extension == '.pdf':
         return _extract_content_pdf(file_path, console)
     elif file_extension == '.txt':

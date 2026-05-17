@@ -66,12 +66,10 @@ class Lue:
         metadata = content_parser.extract_metadata(self.file_path)
         title = metadata["title"]
         author = metadata["author"]
-        
         if self.progress_file and os.path.exists(self.progress_file):
             try:
-                import json
-                import logging
                 with open(self.progress_file, 'r', encoding='utf-8') as f:
+
                     data = json.load(f)
                     if "custom_title" in data:
                         logging.info(f"[READER] Applying custom title: {data['custom_title']}")
@@ -80,7 +78,6 @@ class Lue:
                         logging.info(f"[READER] Applying custom author: {data['custom_author']}")
                         author = data.get("custom_author", author)
             except Exception as e:
-                import logging
                 logging.error(f"[READER] Failed to load custom metadata from progress: {e}")
                 
         self.book_title = title
@@ -98,7 +95,7 @@ class Lue:
         if not self.chapters or not any(chapter for chapter in self.chapters):
             self.console.print(f"[bold red]Error: No text could be extracted from the file.[/bold red]")
             self.console.print("This might happen with image-based PDFs or unsupported formats.")
-            sys.exit(1)
+            raise RuntimeError("No text could be extracted from the file.")
             
         if not quiet:
             self.console.print(f"[green]Document loaded successfully![/green]")

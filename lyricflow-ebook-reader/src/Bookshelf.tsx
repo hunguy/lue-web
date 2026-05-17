@@ -71,7 +71,7 @@ export default function Bookshelf({ onOpenBook }: { onOpenBook: (path: string) =
       });
       const data = await res.json();
       if (data.path) {
-        onOpenBook(data.path);
+        fetchBooks();
       }
     } catch (err) {
       console.error(err);
@@ -124,29 +124,8 @@ export default function Bookshelf({ onOpenBook }: { onOpenBook: (path: string) =
       <div className="relative z-10 flex-1 overflow-y-auto px-4 md:px-20 py-20 scrollbar-hide">
         <div className="flex flex-col gap-6 max-w-4xl mx-auto">
           {recentBooks.map((book, i) => (
-            <div key={i} className="relative group">
-              {/* Action Buttons (behind) */}
-              <div className="absolute inset-0 flex justify-end overflow-hidden rounded-2xl">
-                <div className="flex h-full">
-                  <button 
-                    onClick={(e) => { e.stopPropagation(); openEditModal(book); }}
-                    className="flex flex-col items-center justify-center w-24 h-full bg-blue-600 hover:bg-blue-500 transition-colors text-white gap-1"
-                  >
-                    <Edit2 className="w-5 h-5" />
-                    <span className="text-[10px] font-bold uppercase tracking-widest">Edit</span>
-                  </button>
-                  <button 
-                    onClick={(e) => { e.stopPropagation(); setDeletingBook(book); }}
-                    className="flex flex-col items-center justify-center w-24 h-full bg-red-600 hover:bg-red-500 transition-colors text-white gap-1"
-                  >
-                    <Trash2 className="w-5 h-5" />
-                    <span className="text-[10px] font-bold uppercase tracking-widest">Delete</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* Foreground Item */}
-              <motion.button
+            <div key={i} className="overflow-x-clip rounded-2xl w-full">
+              <motion.div
                 drag="x"
                 dragConstraints={{ left: -192, right: 0 }}
                 dragElastic={0.05}
@@ -162,43 +141,66 @@ export default function Bookshelf({ onOpenBook }: { onOpenBook: (path: string) =
                   }
                   setTimeout(() => { dragActiveRef.current = false; }, 100);
                 }}
-                onTap={() => {
-                  if (dragActiveRef.current) return;
-                  
-                  if (swipedBookIdx === i) {
-                    setSwipedBookIdx(null);
-                  } else {
-                    onOpenBook(book.path);
-                  }
-                }}
-                className="relative z-10 w-full flex items-center gap-6 p-4 rounded-2xl bg-zinc-900 border border-white/5 text-left shadow-xl"
+                className="flex w-full items-stretch"
               >
-                <div className="relative w-16 h-16 md:w-20 md:h-20 rounded-xl overflow-hidden shadow-2xl shrink-0 pointer-events-none">
-                  <img src="https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?q=80&w=1000&auto=format&fit=crop" alt="Cover" className="w-full h-full object-cover" />
-                </div>
-                <div className="flex-1 min-w-0 pointer-events-none">
-                  <div className="overflow-hidden whitespace-nowrap relative">
-                    <div className={`inline-block ${book.title.length > 20 ? 'animate-marquee' : ''}`}>
-                      <h3 className="text-white font-bold text-xl md:text-2xl tracking-tight leading-tight inline-block mr-12">
-                        {book.title}
-                      </h3>
-                      {book.title.length > 20 && (
+                {/* Foreground Item */}
+                <motion.button
+                  onTap={() => {
+                    if (dragActiveRef.current) return;
+                    
+                    if (swipedBookIdx === i) {
+                      setSwipedBookIdx(null);
+                    } else {
+                      onOpenBook(book.path);
+                    }
+                  }}
+                  className="w-full shrink-0 flex items-center gap-6 p-4 text-left cursor-pointer transition-colors hover:bg-white/5"
+                >
+                  <div className="relative w-16 h-16 md:w-20 md:h-20 rounded-xl overflow-hidden shadow-2xl shrink-0 pointer-events-none">
+                    <img src="https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?q=80&w=1000&auto=format&fit=crop" alt="Cover" className="w-full h-full object-cover" />
+                  </div>
+                  <div className="flex-1 min-w-0 pointer-events-none">
+                    <div className="overflow-hidden whitespace-nowrap relative">
+                      <div className={`inline-block ${book.title.length > 20 ? 'animate-marquee' : ''}`}>
                         <h3 className="text-white font-bold text-xl md:text-2xl tracking-tight leading-tight inline-block mr-12">
                           {book.title}
                         </h3>
-                      )}
+                        {book.title.length > 20 && (
+                          <h3 className="text-white font-bold text-xl md:text-2xl tracking-tight leading-tight inline-block mr-12">
+                            {book.title}
+                          </h3>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex justify-between items-center w-full mt-1">
+                      <p className="text-white/50 text-sm md:text-base font-semibold uppercase tracking-wider truncate mr-4">
+                        {book.author || "UNKNOWN AUTHOR"}
+                      </p>
+                      <p className="text-white/40 text-[10px] md:text-xs font-bold uppercase tracking-widest shrink-0">
+                        CHAPTER {book.current_c + 1}/{book.total_chapters}
+                      </p>
                     </div>
                   </div>
-                  <div className="flex justify-between items-center w-full mt-1">
-                    <p className="text-white/50 text-sm md:text-base font-semibold uppercase tracking-wider truncate mr-4">
-                      {book.author || "UNKNOWN AUTHOR"}
-                    </p>
-                    <p className="text-white/40 text-[10px] md:text-xs font-bold uppercase tracking-widest shrink-0">
-                      CHAPTER {book.current_c + 1}/{book.total_chapters}
-                    </p>
-                  </div>
+                </motion.button>
+
+                {/* Action Buttons (side) */}
+                <div className="flex w-[192px] shrink-0">
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); openEditModal(book); }}
+                    className="flex flex-col items-center justify-center w-24 bg-blue-600 hover:bg-blue-500 transition-colors text-white gap-1"
+                  >
+                    <Edit2 className="w-5 h-5" />
+                    <span className="text-[10px] font-bold uppercase tracking-widest">Edit</span>
+                  </button>
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); setDeletingBook(book); }}
+                    className="flex flex-col items-center justify-center w-24 bg-red-600 hover:bg-red-500 transition-colors text-white gap-1"
+                  >
+                    <Trash2 className="w-5 h-5" />
+                    <span className="text-[10px] font-bold uppercase tracking-widest">Delete</span>
+                  </button>
                 </div>
-              </motion.button>
+              </motion.div>
             </div>
           ))}
           
