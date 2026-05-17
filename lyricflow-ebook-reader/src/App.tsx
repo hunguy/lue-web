@@ -11,7 +11,7 @@ import {
   ChevronUp,
   ChevronDown
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence, animate } from 'motion/react';
 import Bookshelf from './Bookshelf';
 
 const formatTime = (seconds: number) => {
@@ -74,7 +74,8 @@ const Sentence = memo(({
   return (
     <div 
       ref={isActive ? activeLineRef : null}
-      className={`transition-all duration-700 ease-out ${
+      data-sidx={sIdx}
+      className={`transition-all duration-400 ease-[cubic-bezier(0.2,0,0,1)] ${
         isActive ? 'scale-105 origin-left' : 'scale-100'
       }`}
     >
@@ -134,24 +135,29 @@ export default function App() {
   }, [sentences, currentPos]);
 
   const [windowStart, setWindowStart] = useState(0);
-  const windowSize = 80;
-  const buffer = 20;
+  const windowSize = 100;
+  const windowBuffer = 30;
 
-  useEffect(() => {
-    if (sentences.length === 0) {
-      setWindowStart(0);
-      return;
-    }
-    
-    // Only shift window if we are outside the buffer zone
-    if (currentSentenceIndex < windowStart + buffer && windowStart > 0) {
-      const newStart = Math.max(0, currentSentenceIndex - 30);
+  // Synchronous window adjustment during render
+  // This prevents the 'blank screen' flash when jumping or switching chapters
+  if (sentences.length > 0) {
+    if (currentSentenceIndex < windowStart || currentSentenceIndex >= windowStart + windowSize) {
+      const newStart = Math.max(0, currentSentenceIndex - 40);
       setWindowStart(newStart);
-    } else if (currentSentenceIndex > windowStart + windowSize - buffer && windowStart + windowSize < sentences.length) {
-      const newStart = Math.min(sentences.length - windowSize, currentSentenceIndex - 30);
-      setWindowStart(newStart);
+    } else if (currentSentenceIndex > windowStart + windowSize - windowBuffer && windowStart + windowSize < sentences.length) {
+      // Step window forward if we're reaching the end
+      const newStart = Math.min(sentences.length - windowSize, currentSentenceIndex - 40);
+      if (newStart > windowStart) {
+        setWindowStart(newStart);
+      }
+    } else if (currentSentenceIndex < windowStart + windowBuffer && windowStart > 0) {
+      // Step window backward if we're reaching the start
+      const newStart = Math.max(0, currentSentenceIndex - 40);
+      if (newStart < windowStart) {
+        setWindowStart(newStart);
+      }
     }
-  }, [currentSentenceIndex, sentences.length, windowStart]);
+  }
 
   const visibleSentences = useMemo(() => {
     const end = Math.min(sentences.length, windowStart + windowSize);
@@ -343,12 +349,33 @@ export default function App() {
     if (isPlaying) {
       intervalId = window.setInterval(() => {
         if (audioRef.current) {
-          setCurrentTime(audioRef.current.currentTime);
+          const time = audioRef.current.currentTime;
+          setCurrentTime(time);
+          
+          // ANTICIPATION LOGIC
+          // If we are within 50ms of the end of the current sentence,
+          // look ahead and start scrolling to the NEXT sentence
+          const currentSentence = sentences[currentSentenceIndex];
+          if (currentSentence?.duration && !isUserScrolling && scrollContainerRef.current) {
+            if (time >= currentSentence.duration - 0.05) {
+              const nextIdx = currentSentenceIndex + 1;
+              const nextElement = scrollContainerRef.current.querySelector(`[data-sidx="${nextIdx}"]`) as HTMLElement;
+              if (nextElement) {
+                const breathingRoom = window.innerHeight * 0.1;
+                const targetScrollTop = Math.max(0, nextElement.offsetTop - breathingRoom);
+                
+                scrollContainerRef.current.scrollTo({
+                  top: targetScrollTop,
+                  behavior: 'smooth'
+                });
+              }
+            }
+          }
         }
-      }, 50);
+      }, 33);
     }
     return () => clearInterval(intervalId);
-  }, [isPlaying]);
+  }, [isPlaying, sentences, currentSentenceIndex, isUserScrolling]);
 
   useEffect(() => {
     if (isPlaying && showControls) {
@@ -369,16 +396,15 @@ export default function App() {
       const container = scrollContainerRef.current;
       const element = activeLineRef.current;
       
-      // Calculate absolute target position
-      // We scroll so the element is at the very top of the scrollable area
-      // (which is immediately below the header section)
-      // Use a viewport-relative offset (5vh) for breathing room
-      const breathingRoom = window.innerHeight * 0.05;
+      const breathingRoom = window.innerHeight * 0.1; // 10vh
       const targetScrollTop = Math.max(0, element.offsetTop - breathingRoom);
+      
+      // Calculate distance to determine if we should jump or smooth scroll
+      const distance = Math.abs(container.scrollTop - targetScrollTop);
       
       container.scrollTo({
         top: targetScrollTop,
-        behavior: 'smooth'
+        behavior: distance > 300 ? 'instant' : 'smooth'
       });
     }
   }, [currentSentenceIndex, isUserScrolling, windowStart]);
@@ -634,8 +660,8 @@ export default function App() {
               ref={scrollContainerRef}
               onScroll={handleScroll}
               style={{
-                maskImage: 'linear-gradient(to bottom, transparent 0px, black 40px, black calc(100% - 150px), transparent 100%)',
-                WebkitMaskImage: 'linear-gradient(to bottom, transparent 0px, black 40px, black calc(100% - 150px), transparent 100%)',
+                maskImage: 'linear-gradient(to bottom, transparent 0px, black 20px, black calc(100% - 300px), transparent 100%)',
+                WebkitMaskImage: 'linear-gradient(to bottom, transparent 0px, black 20px, black calc(100% - 300px), transparent 100%)',
               }}
             >
               <div className="flex flex-col gap-12 pb-[30vh]">
