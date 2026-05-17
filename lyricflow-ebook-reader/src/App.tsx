@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo, memo, useCallback } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef, useMemo, memo, useCallback } from 'react';
 import { 
   Play, 
   Pause, 
@@ -133,16 +133,30 @@ export default function App() {
     return idx !== -1 ? idx : 0;
   }, [sentences, currentPos]);
 
-  // Lazy Window logic
-  const windowSize = 40;
-  const windowOffset = 15;
+  const [windowStart, setWindowStart] = useState(0);
+  const windowSize = 80;
+  const buffer = 20;
+
+  useEffect(() => {
+    if (sentences.length === 0) {
+      setWindowStart(0);
+      return;
+    }
+    
+    // Only shift window if we are outside the buffer zone
+    if (currentSentenceIndex < windowStart + buffer && windowStart > 0) {
+      const newStart = Math.max(0, currentSentenceIndex - 30);
+      setWindowStart(newStart);
+    } else if (currentSentenceIndex > windowStart + windowSize - buffer && windowStart + windowSize < sentences.length) {
+      const newStart = Math.min(sentences.length - windowSize, currentSentenceIndex - 30);
+      setWindowStart(newStart);
+    }
+  }, [currentSentenceIndex, sentences.length, windowStart]);
+
   const visibleSentences = useMemo(() => {
-    if (sentences.length <= windowSize) return sentences.map((s, i) => ({ ...s, originalIdx: i }));
-    let start = Math.max(0, currentSentenceIndex - windowOffset);
-    let end = Math.min(sentences.length, start + windowSize);
-    if (end === sentences.length) start = Math.max(0, end - windowSize);
-    return sentences.slice(start, end).map((s, i) => ({ ...s, originalIdx: start + i }));
-  }, [sentences, currentSentenceIndex]);
+    const end = Math.min(sentences.length, windowStart + windowSize);
+    return sentences.slice(windowStart, end).map((s, i) => ({ ...s, originalIdx: windowStart + i }));
+  }, [sentences, windowStart]);
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const activeLineRef = useRef<HTMLDivElement>(null);
@@ -193,6 +207,7 @@ export default function App() {
       setBookInfo(data);
       setIsReading(true);
       setSentences([]);
+      setWindowStart(0);
       // Do not reset currentPos here, let WebSocket provide it
       setIsPlaying(true);
     } catch (err) {
@@ -217,6 +232,12 @@ export default function App() {
       if (data.type === 'chapter_data') {
         setSentences(data.sentences);
         setCurrentPos({ c: data.c, p: data.current_p, s: data.current_s });
+        
+        // Adjust windowStart if the current position is far from it
+        const idx = data.sentences.findIndex((s: any) => s.c === data.c && s.p === data.current_p && s.s === data.current_s);
+        if (idx !== -1) {
+          setWindowStart(Math.max(0, idx - 30));
+        }
       } else if (data.type === 'new_sentence') {
         setSentences(prev => {
           const idx = prev.findIndex(s => s.c === data.c && s.p === data.p && s.s === data.s);
@@ -341,14 +362,25 @@ export default function App() {
     };
   }, [isPlaying, showControls, showChapterList]);
 
-  useEffect(() => {
+  const useIsomorphicLayoutEffect = typeof window !== 'undefined' ? useLayoutEffect : useEffect;
+
+  useIsomorphicLayoutEffect(() => {
     if (!isUserScrolling && activeLineRef.current && scrollContainerRef.current) {
-      activeLineRef.current.scrollIntoView({
-        behavior: 'smooth',
-        block: 'center'
+      const container = scrollContainerRef.current;
+      const element = activeLineRef.current;
+      
+      // Calculate absolute target position
+      // We scroll so the element is at the very top of the scrollable area
+      // (which is immediately below the header section)
+      // Adding 20px of padding for breathing room
+      const targetScrollTop = Math.max(0, element.offsetTop - 20);
+      
+      container.scrollTo({
+        top: targetScrollTop,
+        behavior: 'smooth'
       });
     }
-  }, [currentSentenceIndex, isUserScrolling, visibleSentences]);
+  }, [currentSentenceIndex, isUserScrolling, windowStart]);
 
   const handleScroll = () => {
     setIsUserScrolling(true);
@@ -601,8 +633,8 @@ export default function App() {
               ref={scrollContainerRef}
               onScroll={handleScroll}
               style={{
-                maskImage: 'linear-gradient(to bottom, transparent 0%, black 15%, black 85%, transparent 100%)',
-                WebkitMaskImage: 'linear-gradient(to bottom, transparent 0%, black 15%, black 85%, transparent 100%)',
+                maskImage: 'linear-gradient(to bottom, transparent 0px, black 40px, black calc(100% - 150px), transparent 100%)',
+                WebkitMaskImage: 'linear-gradient(to bottom, transparent 0px, black 40px, black calc(100% - 150px), transparent 100%)',
               }}
             >
               <div className="flex flex-col gap-12 pb-[30vh]">
