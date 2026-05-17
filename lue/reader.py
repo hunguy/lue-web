@@ -2,6 +2,7 @@ import os
 import sys
 import asyncio
 import re
+import json
 import signal
 import logging
 import subprocess
@@ -17,9 +18,6 @@ class Lue:
         self.console = Console()
         self.loop = None
         self.file_path = file_path
-        metadata = content_parser.extract_metadata(file_path)
-        self.book_title = metadata["title"]
-        self.book_author = metadata["author"]
         self.progress_file = progress_manager.get_progress_file_path(os.path.splitext(os.path.basename(file_path))[0])
         self.overlap_override = overlap
         
@@ -64,13 +62,33 @@ class Lue:
         
     def _load_content(self, quiet=False):
         """Load and process the document content."""
+        # Load metadata, prioritizing custom overrides from progress file
+        metadata = content_parser.extract_metadata(self.file_path)
+        title = metadata["title"]
+        author = metadata["author"]
+        
+        if self.progress_file and os.path.exists(self.progress_file):
+            try:
+                import json
+                import logging
+                with open(self.progress_file, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    if "custom_title" in data:
+                        logging.info(f"[READER] Applying custom title: {data['custom_title']}")
+                        title = data.get("custom_title", title)
+                    if "custom_author" in data:
+                        logging.info(f"[READER] Applying custom author: {data['custom_author']}")
+                        author = data.get("custom_author", author)
+            except Exception as e:
+                import logging
+                logging.error(f"[READER] Failed to load custom metadata from progress: {e}")
+                
+        self.book_title = title
+        self.book_author = author
+        logging.info(f"[READER] Resolved Title: '{self.book_title}', Author: '{self.book_author}'")
+
         if not quiet:
             self.console.print(f"[bold cyan]Loading document: {self.book_title}...[/bold cyan]")
-        
-        # Ensure we have metadata for the book title and author
-        metadata = content_parser.extract_metadata(self.file_path)
-        self.book_title = metadata["title"]
-        self.book_author = metadata["author"]
         
         chapter_data = content_parser.extract_content(self.file_path, self.console)
         self.chapters = [c["paragraphs"] for c in chapter_data]

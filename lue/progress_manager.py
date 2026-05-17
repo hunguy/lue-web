@@ -112,14 +112,20 @@ def save_extended_progress(progress_file, chapter_idx, paragraph_idx, sentence_i
     """
     Save extended reading progress including UI state.
     """
-    # Load existing to preserve chapter_progress if any
+    import logging
+    # Load existing to preserve custom metadata and chapter_progress
     try:
-        with open(progress_file, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-    except:
+        if os.path.exists(progress_file):
+            with open(progress_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+        else:
+            data = {}
+    except Exception as e:
+        logging.warning(f"[PROGRESS] Failed to load existing progress for save: {e}")
         data = {}
 
-    progress = {
+    # Update progress-related fields
+    data.update({
         "c": chapter_idx,
         "p": paragraph_idx, 
         "s": sentence_idx,
@@ -128,24 +134,26 @@ def save_extended_progress(progress_file, chapter_idx, paragraph_idx, sentence_i
         "auto_scroll_enabled": bool(auto_scroll_enabled),
         "playback_speed": float(playback_speed),
         "completion_percentage": float(percentage),
-        "total_chapters": int(total_chapters),
-        "chapter_progress": data.get("chapter_progress", {})
-    }
+        "total_chapters": int(total_chapters)
+    })
     
     # Update chapter_progress
-    if str(chapter_idx) not in progress["chapter_progress"]:
-        progress["chapter_progress"][str(chapter_idx)] = [paragraph_idx, sentence_idx]
-    else:
-        # Update if further? Or just update always.
-        progress["chapter_progress"][str(chapter_idx)] = [paragraph_idx, sentence_idx]
+    if "chapter_progress" not in data:
+        data["chapter_progress"] = {}
+    
+    data["chapter_progress"][str(chapter_idx)] = [paragraph_idx, sentence_idx]
 
     if manual_scroll_anchor:
-        progress["manual_scroll_anchor"] = manual_scroll_anchor
+        data["manual_scroll_anchor"] = manual_scroll_anchor
     if original_file_path:
-        progress["original_file_path"] = original_file_path
+        data["original_file_path"] = original_file_path
         
-    with open(progress_file, 'w', encoding='utf-8') as f:
-        json.dump(progress, f, indent=2)
+    try:
+        with open(progress_file, 'w', encoding='utf-8') as f:
+            json.dump(data, f, indent=2)
+        logging.debug(f"[PROGRESS] Saved position to {progress_file}, keys present: {list(data.keys())}")
+    except Exception as e:
+        logging.error(f"[PROGRESS] Failed to save progress: {e}")
 
 def get_recent_books(limit=5):
     """
@@ -178,8 +186,10 @@ def get_recent_books(limit=5):
             # Extract rich metadata
             from . import content_parser
             metadata = content_parser.extract_metadata(original_path)
-            title = metadata["title"]
-            author = metadata["author"]
+            # Prioritize custom metadata if it exists in the progress file
+            title = data.get("custom_title", metadata["title"])
+            author = data.get("custom_author", metadata["author"])
+            voice = data.get("tts_voice", config.TTS_VOICES.get("edge"))
             
             percentage = data.get("completion_percentage", 0.0)
             current_c = data.get("c", 0)
@@ -188,6 +198,7 @@ def get_recent_books(limit=5):
             recent_books.append({
                 "title": title,
                 "author": author,
+                "voice": voice,
                 "path": original_path,
                 "percentage": percentage,
                 "current_c": current_c,
@@ -198,6 +209,52 @@ def get_recent_books(limit=5):
             continue
             
     return recent_books
+
+def update_book_metadata(original_path, title=None, author=None, voice=None):
+    """Update custom metadata for a book in its progress file."""
+    import logging
+    book_filename = os.path.splitext(os.path.basename(original_path))[0]
+    progress_file = get_progress_file_path(book_filename)
+    logging.info(f"[METADATA] Updating {book_filename} - Title: {title}, Author: {author}, Voice: {voice}")
+    
+    try:
+        if os.path.exists(progress_file):
+            with open(progress_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            logging.info(f"[METADATA] Found existing progress file, keys: {list(data.keys())}")
+        else:
+            data = {"original_file_path": original_path}
+            logging.info(f"[METADATA] Creating new progress file")
+            
+        if title: data["custom_title"] = title
+        if author: data["custom_author"] = author
+        if voice: data["tts_voice"] = voice
+        
+        with open(progress_file, 'w', encoding='utf-8') as f:
+            json.dump(data, f, indent=2)
+        logging.info(f"[METADATA] Successfully saved custom metadata to {progress_file}")
+        return True
+    except Exception as e:
+        logging.error(f"[METADATA] Failed to update book metadata: {e}")
+        return False
+
+def delete_book(original_path):
+    """Delete a book's progress file and its uploaded file if it exists."""
+    progress_file = get_progress_file_path(os.path.splitext(os.path.basename(original_path))[0])
+    try:
+        # Delete progress file
+        if os.path.exists(progress_file):
+            os.remove(progress_file)
+            
+        # If the file is in the uploads directory, delete it too
+        if "uploads" in original_path and os.path.exists(original_path):
+            os.remove(original_path)
+            
+        return True
+    except Exception as e:
+        import logging
+        logging.error(f"Failed to delete book: {e}")
+        return False
 
 def validate_and_set_progress(chapters, progress_file, c, p, s):
     """

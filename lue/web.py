@@ -178,6 +178,24 @@ async def upload_book(file: UploadFile = File(...)):
         
     return {"message": "Upload successful", "path": file_path}
 
+@app.post("/api/update_metadata")
+async def update_metadata(request: Request):
+    data = await request.json()
+    path = data.get("path")
+    title = data.get("title")
+    author = data.get("author")
+    voice = data.get("voice")
+    
+    success = progress_manager.update_book_metadata(path, title, author, voice)
+    return {"success": success}
+
+@app.post("/api/delete_book")
+async def delete_book(request: Request):
+    data = await request.json()
+    path = data.get("path")
+    success = progress_manager.delete_book(path)
+    return {"success": success}
+
 @app.post("/api/open")
 async def open_book(request: Request):
     global active_reader
@@ -192,12 +210,25 @@ async def open_book(request: Request):
     tts_manager = TTSManager()
     from rich.console import Console
     console = Console()
-    tts_instance = tts_manager.create_model(get_default_tts_model_name(tts_manager.get_available_tts_names()), console)
+    
+    # Check for saved voice in progress file
+    progress_file = progress_manager.get_progress_file_path(os.path.splitext(os.path.basename(file_path))[0])
+    saved_voice = None
+    if os.path.exists(progress_file):
+        try:
+            with open(progress_file, 'r', encoding='utf-8') as f:
+                p_data = json.load(f)
+                saved_voice = p_data.get("tts_voice")
+        except:
+            pass
+            
+    # Default to edge if no saved voice, or use saved voice
+    model_name = "edge"
+    voice = saved_voice if saved_voice else config.TTS_VOICES.get(model_name)
+    tts_instance = tts_manager.create_model(model_name, console, voice=voice)
     
     active_reader = WebLue(file_path, tts_instance, config.OVERLAP_SECONDS)
     await active_reader.initialize_tts()
-    # Ensure metadata is loaded
-    active_reader._load_content(quiet=True)
     active_reader._initialize_progress()
 
     # Run the reader loop
