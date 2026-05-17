@@ -33,7 +33,8 @@ ENV XDG_DATA_HOME=/data
 ENV XDG_CACHE_HOME=/data/cache
 
 # Expose the port FastAPI runs on
-EXPOSE 8000
+ENV PORT=26516
+EXPOSE 26516
 
 # Command to run the application in web mode
-CMD ["python", "-m", "lue", "--web", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["python", "-m", "lue", "--web"]

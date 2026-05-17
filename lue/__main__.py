@@ -348,10 +348,11 @@ def cli():
         setup_logging()
         from rich.console import Console
         console = Console()
-        console.print("[green]Starting Lue web server on http://localhost:8000[/green]")
+        port = int(os.getenv("PORT", 26516))
+        console.print(f"[green]Starting Lue web server on http://localhost:{port}[/green]")
         import uvicorn
         from .web import app as web_app
-        uvicorn.run(web_app, host="0.0.0.0", port=8000)
+        uvicorn.run(web_app, host="0.0.0.0", port=port)
         return
         
     try:

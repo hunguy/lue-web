@@ -28,6 +28,7 @@ The project is integrating a React-based web frontend (`lyricflow-ebook-reader`)
 - **Docker**: The project includes a `Dockerfile` and `docker-compose.yml` for easy deployment on remote VMs.
   - The `Dockerfile` uses a multi-stage build (Node -> Python).
   - Data is persisted in a named volume (`lue-data`).
+  - The application defaults to port **26516**, configurable via the `PORT` environment variable.
   - To deploy: `docker-compose up -d --build`.
 
 ## Gotchas & Learnings (Crucial for Future Agents)

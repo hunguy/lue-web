@@ -2,7 +2,7 @@ services:
   lue:
     build: .
     ports:
-      - "8000:8000"
+      - "26516:26516"
     volumes:
       - lue-data:/data
     restart: unless-stopped
