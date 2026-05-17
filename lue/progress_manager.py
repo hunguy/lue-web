@@ -155,7 +155,26 @@ def save_extended_progress(progress_file, chapter_idx, paragraph_idx, sentence_i
     except Exception as e:
         logging.error(f"[PROGRESS] Failed to save progress: {e}")
 
-def get_recent_books(limit=5):
+def get_book_cover_url(original_path):
+    """Get or extract cover URL for a book."""
+    from . import content_parser
+    cover_dir = os.path.join(config.PROGRESS_FILE_DIR, "covers")
+    os.makedirs(cover_dir, exist_ok=True)
+    import hashlib
+    path_hash = hashlib.md5(original_path.encode()).hexdigest()
+    cover_filename = f"{path_hash}.png"
+    cover_path = os.path.join(cover_dir, cover_filename)
+
+    has_cover = False
+    if os.path.exists(cover_path):
+        has_cover = True
+    else:
+        has_cover = content_parser.extract_cover(original_path, cover_path)
+
+    return f"/api/cover/{cover_filename}" if has_cover else None
+
+def get_recent_books(limit=10):
+
     """
     Get a list of recently read books.
     
@@ -202,7 +221,8 @@ def get_recent_books(limit=5):
                 "path": original_path,
                 "percentage": percentage,
                 "current_c": current_c,
-                "total_chapters": total_chapters
+                "total_chapters": total_chapters,
+                "cover_url": get_book_cover_url(original_path)
             })
             
         except (json.JSONDecodeError, IOError):

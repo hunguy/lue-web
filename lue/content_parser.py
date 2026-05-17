@@ -476,6 +476,72 @@ def extract_metadata(file_path):
     return {"title": title, "author": author}
 
 
+def extract_cover(file_path, output_path):
+    """Extract cover image from EPUB or first page of PDF."""
+    file_extension = os.path.splitext(file_path)[1].lower()
+    
+    if file_extension == '.epub' or file_extension == '.zip':
+        try:
+            with zipfile.ZipFile(file_path, 'r') as zip_archive:
+                # Find OPF
+                container_data = zip_archive.read('META-INF/container.xml')
+                container_root = ET.fromstring(container_data)
+                rootfile_elem = container_root.find('.//{*}rootfile')
+                if rootfile_elem is None:
+                    rootfile_elem = container_root.find('.//rootfile')
+                if rootfile_elem is None:
+                    return False
+                
+                opf_path = rootfile_elem.get('full-path')
+                opf_dir = os.path.dirname(opf_path)
+                opf_data = zip_archive.read(opf_path)
+                opf_root = ET.fromstring(opf_data)
+                
+                # Find cover image id from meta
+                cover_id = None
+                for meta in opf_root.findall('.//{*}meta'):
+                    if meta.get('name') == 'cover':
+                        cover_id = meta.get('content')
+                        break
+                
+                # Find manifest item
+                manifest = opf_root.find('.//{*}manifest')
+                if manifest is not None:
+                    for item in manifest.findall('{*}item'):
+                        # Either by ID from meta or by properties="cover-image" (EPUB3)
+                        if (cover_id and item.get('id') == cover_id) or (item.get('properties') == 'cover-image'):
+                            href = item.get('href')
+                            # Handle relative paths
+                            img_path = os.path.normpath(os.path.join(opf_dir, href))
+                            with open(output_path, 'wb') as f:
+                                f.write(zip_archive.read(img_path))
+                            return True
+                
+                # Fallback: look for common cover names
+                for name in zip_archive.namelist():
+                    if 'cover' in name.lower() and (name.lower().endswith('.jpg') or name.lower().endswith('.png') or name.lower().endswith('.jpeg')):
+                        with open(output_path, 'wb') as f:
+                            f.write(zip_archive.read(name))
+                        return True
+        except Exception as e:
+            logging.debug(f"EPUB cover extraction failed for {file_path}: {e}")
+            pass
+            
+    elif file_extension == '.pdf':
+        try:
+            with fitz.open(file_path) as doc:
+                if doc.page_count > 0:
+                    page = doc.load_page(0)
+                    pix = page.get_pixmap(matrix=fitz.Matrix(0.5, 0.5)) # Low res for thumbnail
+                    pix.save(output_path)
+                    return True
+        except Exception as e:
+            logging.debug(f"PDF cover extraction failed for {file_path}: {e}")
+            pass
+            
+    return False
+
+
 def extract_content(file_path, console):
     """Extract content from the file based on its extension."""
     file_extension = os.path.splitext(file_path)[1].lower()

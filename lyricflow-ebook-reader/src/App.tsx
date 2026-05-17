@@ -493,7 +493,21 @@ export default function App() {
           </button>
         </div>
         <div className="flex items-center gap-6">
-          <motion.img initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} src="https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?q=80&w=1000&auto=format&fit=crop" alt="Cover" className="w-[80px] h-[80px] rounded-xl shadow-2xl shrink-0" />
+          <div className="relative w-[80px] h-[80px] rounded-xl overflow-hidden shadow-2xl shrink-0 pointer-events-none border border-white/20 flex items-center justify-center bg-transparent">
+            {bookInfo?.cover_url ? (
+              <img src={bookInfo.cover_url} alt="Cover" className="w-full h-full object-cover" />
+            ) : (
+              <span 
+                className="text-4xl font-black uppercase select-none"
+                style={{ 
+                  color: 'transparent',
+                  WebkitTextStroke: '1.5px rgba(255, 255, 255, 0.2)'
+                }}
+              >
+                {bookInfo?.title?.charAt(0) || "B"}
+              </span>
+            )}
+          </div>
           <div className="flex-1 min-w-0">
             <div className="overflow-hidden whitespace-nowrap relative">
               <div className="inline-block animate-marquee hover:pause-animation">
@@ -535,8 +549,20 @@ export default function App() {
                     onClick={() => handleChapterClick(idx)}
                     className="flex items-center gap-4 p-3 rounded-xl transition-all group hover:bg-white/5"
                   >
-                    <div className="relative w-12 h-12 rounded-lg overflow-hidden shadow-lg shrink-0">
-                      <img src="https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?q=80&w=1000&auto=format&fit=crop" alt="Cover" className="w-full h-full object-cover" />
+                    <div className="relative w-12 h-12 rounded-lg overflow-hidden shadow-lg shrink-0 border border-white/10 flex items-center justify-center bg-transparent">
+                      {bookInfo?.cover_url ? (
+                        <img src={bookInfo.cover_url} alt="Cover" className="w-full h-full object-cover" />
+                      ) : (
+                        <span 
+                          className="text-2xl font-black uppercase select-none"
+                          style={{ 
+                            color: 'transparent',
+                            WebkitTextStroke: '1px rgba(255, 255, 255, 0.2)'
+                          }}
+                        >
+                          {bookInfo?.title?.charAt(0) || "B"}
+                        </span>
+                      )}
                       {idx === currentPos.c && isPlaying && (
                         <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
                           <div className="flex gap-0.5 items-end h-3">

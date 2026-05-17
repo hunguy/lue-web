@@ -244,7 +244,8 @@ async def open_book(request: Request):
         "title": active_reader.book_title,
         "author": active_reader.book_author,
         "chapters": len(active_reader.chapters),
-        "chapter_titles": active_reader.chapter_titles
+        "chapter_titles": active_reader.chapter_titles,
+        "cover_url": progress_manager.get_book_cover_url(file_path)
     }
 
 @app.get("/api/book_info")
@@ -257,6 +258,7 @@ async def book_info():
         "chapters": len(active_reader.chapters),
         "chapter_titles": active_reader.chapter_titles,
         "total_sentences": active_reader.total_sentences,
+        "cover_url": progress_manager.get_book_cover_url(active_reader.file_path),
         "current_position": {
             "c": active_reader.chapter_idx,
             "p": active_reader.paragraph_idx,
@@ -321,6 +323,14 @@ async def get_audio(buffer_filename: str):
     if os.path.exists(audio_path):
         return FileResponse(audio_path)
     return {"error": "File not found"}
+
+@app.get("/api/cover/{filename}")
+async def get_cover(filename: str):
+    cover_path = os.path.join(config.PROGRESS_FILE_DIR, "covers", filename)
+    if os.path.exists(cover_path):
+        return FileResponse(cover_path)
+    from fastapi import HTTPException
+    raise HTTPException(status_code=404, detail="Cover not found")
 
 # We need to serve the built react app
 import pathlib

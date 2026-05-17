@@ -35,6 +35,7 @@ interface Book {
   percentage: number;
   current_c: number;
   total_chapters: number;
+  cover_url?: string;
 }
 
 export default function Bookshelf({ onOpenBook }: { onOpenBook: (path: string) => void }) {
@@ -156,8 +157,20 @@ export default function Bookshelf({ onOpenBook }: { onOpenBook: (path: string) =
                   }}
                   className="w-full shrink-0 flex items-center gap-6 p-4 text-left cursor-pointer transition-colors hover:bg-white/5"
                 >
-                  <div className="relative w-16 h-16 md:w-20 md:h-20 rounded-xl overflow-hidden shadow-2xl shrink-0 pointer-events-none">
-                    <img src="https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?q=80&w=1000&auto=format&fit=crop" alt="Cover" className="w-full h-full object-cover" />
+                  <div className="relative w-16 h-16 md:w-20 md:h-20 rounded-xl overflow-hidden shadow-2xl shrink-0 pointer-events-none border border-white/20 flex items-center justify-center bg-transparent">
+                    {book.cover_url ? (
+                      <img src={book.cover_url} alt="Cover" className="w-full h-full object-cover" />
+                    ) : (
+                      <span 
+                        className="text-4xl md:text-5xl font-black uppercase select-none"
+                        style={{ 
+                          color: 'transparent',
+                          WebkitTextStroke: '1.5px rgba(255, 255, 255, 0.2)'
+                        }}
+                      >
+                        {book.title.charAt(0)}
+                      </span>
+                    )}
                   </div>
                   <div className="flex-1 min-w-0 pointer-events-none">
                     <div className="overflow-hidden whitespace-nowrap relative">
