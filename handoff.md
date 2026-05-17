@@ -13,7 +13,7 @@ The project is integrating a React-based web frontend (`lyricflow-ebook-reader`)
 
 - **Frontend (`lyricflow-ebook-reader`)**:
   - React + Vite + TailwindCSS + Motion (Framer Motion).
-  - **Bookshelf (`Bookshelf.tsx`)**: Displays recently read books and allows uploading new EPUB/PDFs.
+  - **Bookshelf (`Bookshelf.tsx`)**: Displays recently read books with a minimalist, cinematic layout.
   - **Reader (`App.tsx`)**: 
     - Uses a **Lazy Window** strategy to render only ~40 sentences around the current position, ensuring 60fps performance even in chapters with 30,000+ words.
     - Implements selective prop passing: only the **active** sentence receives the high-frequency `currentTime` update.
@@ -37,19 +37,30 @@ Rendering 30,000+ words (standard for large chapters) freezes the React reconcil
 EPUB metadata (OPF) uses varied namespaces for title and creator tags.
 * **Fix**: Use a robust XML iteration strategy in `extract_metadata` that checks for local tag names (e.g., `endswith('}creator')`) to capture author info reliably.
 
+### 5. Control Panel Interaction & Z-Index
+A common pitfall in "immersive" UIs is using transparent divs to trigger controls.
+* **Gotcha**: A high-z-index transparent div intended to reveal the control bar can accidentally block clicks to the buttons *inside* that control bar once it's visible.
+* **Fix**: Ensure the control bar has the highest `z-index` (40+) and use a dedicated, non-blocking toggle button (e.g., the bouncy Chevron toggle) at `z-index: 50` for dismissing panels.
+
 ## Current State & Recent UI Updates
-- **Header**: Moved "Back" button to a separate top row; increased cover art to 80x80; implemented marquee effect for long titles.
+- **Bookshelf Redesign**:
+  - Minimalist layout matching the reader's aesthetic (no headers, cinematic background).
+  - Book entries styled like the reader header (80x80 cover, text-3xl marquee title, text-lg author).
+  - Replaced bulky progress bars with a clean **"CHAPTER X/Y"** indicator.
+  - Transformed the upload area into a **floating bottom-right "Plus" button (FAB)**.
+- **Reader Header**: Moved "Back" button to a separate top row; increased cover art to 80x80; implemented marquee effect for long titles.
 - **Lyrics**: Immersive styling where only the active sentence is highlighted; all others (past and future) are dimmed to 20% opacity.
 - **Progress Bar**: Show elapsed and remaining `hh:mm:ss`; implemented an interactive hover/drag tooltip with a 20px vertical activation range.
-- **Autoplay**: Books now immediately resume from the last saved position when opened.
 - **Chapter Selection**:
   - Implemented a "Playlist-style" chapter selection menu (Apple Music style).
   - Backend extracts and serves chapter titles (where possible) via `extract_content`.
   - Added **Per-chapter Progress Tracking** in `progress_manager.py` (`chapter_progress` map). User can jump to any chapter and resume from their last position in that specific chapter.
+- **UX Controls**:
+  - Added a smart **Chevron Up/Down** toggle at the bottom to reveal/hide controls and the chapter list.
+  - Increased auto-hide timer to **10 seconds** and added logic to reset the timer when the chapter list is toggled.
 - **Audio Reliability**:
   - Implemented exponential backoff and retry for `ffprobe` duration extraction to handle disk flush lag.
   - Producer now skips empty sanitized text to prevent 0.0 duration generation.
   - Player provides a 1.0s fallback duration for invalid files to prevent UI hangs.
-- **Data Integrity**: Fixed a crash in `/api/open` due to missing imports and added the missing `chapters` field to `/api/book_info` to ensure UI consistency after page refreshes.
 - **Build Step**: Run `npm run build` in `lyricflow-ebook-reader` whenever React changes are made.
 - **Run**: `python -m lue --web` from the project root.

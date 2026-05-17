@@ -108,7 +108,7 @@ def save_progress(progress_file, chapter_idx, paragraph_idx, sentence_idx):
         json.dump(data, f, indent=2)
 
 def save_extended_progress(progress_file, chapter_idx, paragraph_idx, sentence_idx, 
-                          scroll_offset, tts_enabled, auto_scroll_enabled, manual_scroll_anchor=None, original_file_path=None, playback_speed=1.0, percentage=0.0):
+                          scroll_offset, tts_enabled, auto_scroll_enabled, manual_scroll_anchor=None, original_file_path=None, playback_speed=1.0, percentage=0.0, total_chapters=1):
     """
     Save extended reading progress including UI state.
     """
@@ -128,6 +128,7 @@ def save_extended_progress(progress_file, chapter_idx, paragraph_idx, sentence_i
         "auto_scroll_enabled": bool(auto_scroll_enabled),
         "playback_speed": float(playback_speed),
         "completion_percentage": float(percentage),
+        "total_chapters": int(total_chapters),
         "chapter_progress": data.get("chapter_progress", {})
     }
     
@@ -174,17 +175,23 @@ def get_recent_books(limit=5):
             if not original_path or not os.path.exists(original_path):
                 continue
                 
-            # Derive title from filename if not stored (we don't store title currently, so use filename)
-            title = os.path.basename(original_path)
-            # Remove extension
-            title = os.path.splitext(title)[0]
+            # Extract rich metadata
+            from . import content_parser
+            metadata = content_parser.extract_metadata(original_path)
+            title = metadata["title"]
+            author = metadata["author"]
             
             percentage = data.get("completion_percentage", 0.0)
+            current_c = data.get("c", 0)
+            total_chapters = data.get("total_chapters", 1)
             
             recent_books.append({
                 "title": title,
+                "author": author,
                 "path": original_path,
-                "percentage": percentage
+                "percentage": percentage,
+                "current_c": current_c,
+                "total_chapters": total_chapters
             })
             
         except (json.JSONDecodeError, IOError):
