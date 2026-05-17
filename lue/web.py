@@ -2,6 +2,7 @@ import os
 import sys
 import asyncio
 import json
+import logging
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File, Request
 from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -34,6 +35,11 @@ class WebLue(Lue):
         self.websockets = []
         self.last_sentence_msg = None
 
+    def _initialize_progress(self):
+        """Override to always start playing in web mode."""
+        super()._initialize_progress()
+        self.is_paused = False
+
     async def broadcast(self, message):
         if message.get("type") == "new_sentence":
             self.last_sentence_msg = message
@@ -57,6 +63,9 @@ class WebLue(Lue):
     async def run(self):
         self.loop = asyncio.get_running_loop()
         if not self.chapters or not self.chapters[0]: return
+        
+        # Double guarantee: always start playing in web mode
+        self.is_paused = False
         
         await audio.play_from_current_position(self)
         
@@ -232,6 +241,8 @@ async def open_book(request: Request):
         await active_reader.initialize_tts()
         active_reader._initialize_progress()
     except Exception as e:
+
+
         logging.error(f"Failed to open book {file_path}: {e}")
         from fastapi import HTTPException
         raise HTTPException(status_code=400, detail=str(e))
@@ -258,6 +269,7 @@ async def book_info():
         "chapters": len(active_reader.chapters),
         "chapter_titles": active_reader.chapter_titles,
         "total_sentences": active_reader.total_sentences,
+        "is_paused": active_reader.is_paused,
         "cover_url": progress_manager.get_book_cover_url(active_reader.file_path),
         "current_position": {
             "c": active_reader.chapter_idx,

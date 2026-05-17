@@ -1,0 +1,11 @@
+services:
+  lue:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - lue-data:/data
+    restart: unless-stopped
+
+volumes:
+  lue-data:

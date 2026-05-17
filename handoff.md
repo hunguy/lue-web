@@ -24,6 +24,12 @@ The project is integrating a React-based web frontend (`lyricflow-ebook-reader`)
     - Apple Music-style lyrics highlighting and synchronization.
     - Cinematic controls with interactive progress bar and smart chapter selection.
 
+## Deployment
+- **Docker**: The project includes a `Dockerfile` and `docker-compose.yml` for easy deployment on remote VMs.
+  - The `Dockerfile` uses a multi-stage build (Node -> Python).
+  - Data is persisted in a named volume (`lue-data`).
+  - To deploy: `docker-compose up -d --build`.
+
 ## Gotchas & Learnings (Crucial for Future Agents)
 
 ### 1. Browser Audio Caching
@@ -54,11 +60,13 @@ Metadata overrides from `.progress.json` must be resolved *before* book content 
 ## Current State & Recent UI Updates
 - **Bookshelf Redesign**: 
   - **Swipe-to-Reveal**: Redesigned to physically push the book item off-screen to reveal Edit/Delete buttons in the same row (Apple Mail style).
-  - **Flat Aesthetic**: Removed background, border, and shadows from book items for a cleaner, minimalist look on the gradient background.
+  - **Minimalist Layout**: Removed background, border, and shadows from book items and the floating Upload button for a truly flat, cinematic aesthetic.
   - **Dynamic Covers**: Implemented automatic cover extraction for EPUB and PDF.
   - **Minimalist Fallback**: Added a beautiful outlined letter fallback for books without covers.
   - **Upload Flow**: Uploading a book now refreshes the list instead of automatically opening it, allowing for metadata edits first.
   - **Automatic Sorting**: Books are sorted by most recently read or edited.
+- **UX Refinements**:
+  - **Auto-Play**: Opening a book now automatically starts playback, ensuring a seamless transition from library to reading.
 - **Support for .zip**: Added support for `.zip` files in the content parser, allowing them to be processed as EPUBs if they contain valid eBook structure.
 - **Interaction Polish**: Fixed swipe gestures with `dragActiveRef` to prevent accidental book opening.
 - **Build Step**: Run `npm run build` in `lyricflow-ebook-reader` whenever React changes are made.

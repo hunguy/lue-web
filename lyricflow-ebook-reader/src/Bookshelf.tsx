@@ -337,8 +337,8 @@ export default function Bookshelf({ onOpenBook }: { onOpenBook: (path: string) =
 
       {/* Floating Upload Button */}
       <div className="absolute bottom-10 right-10 z-[60]">
-        <label className={`flex items-center justify-center w-16 h-16 bg-white/10 hover:bg-white/20 border border-white/10 rounded-full cursor-pointer transition-all shadow-2xl backdrop-blur-xl ${isUploading ? 'animate-pulse opacity-50' : ''}`}>
-          <Plus className={`w-8 h-8 text-white/80 ${isUploading ? 'animate-spin' : ''}`} />
+        <label className={`flex items-center justify-center w-16 h-16 hover:bg-white/5 rounded-full cursor-pointer transition-all ${isUploading ? 'animate-pulse opacity-50' : ''}`}>
+          <Plus className={`w-8 h-8 text-white/40 hover:text-white/80 transition-colors ${isUploading ? 'animate-spin' : ''}`} />
           <input type="file" className="hidden" accept=".epub,.pdf,.txt,.docx,.html,.rtf,.md" onChange={handleUpload} disabled={isUploading} />
         </label>
       </div>
