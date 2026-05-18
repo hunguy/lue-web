@@ -91,6 +91,7 @@ class WebLue(Lue):
                 direction, mode = cmd.split('_')
                 new_pos = self._advance_position(current_pos, mode) if direction == 'next' else self._rewind_position(current_pos, mode)
                 if new_pos:
+                    self.is_paused = False
                     self.chapter_idx, self.paragraph_idx, self.sentence_idx = new_pos
                     self.ui_chapter_idx, self.ui_paragraph_idx, self.ui_sentence_idx = new_pos
                     self._save_extended_progress(sync_audio_position=True)
@@ -101,6 +102,7 @@ class WebLue(Lue):
                     if not more_navigation_pending:
                         self.pending_restart_task = asyncio.create_task(self._restart_audio_after_navigation())
                         await self.broadcast({"type": "clear_queue"})
+                        await self.broadcast({"type": "status", "is_paused": False})
             elif isinstance(cmd, tuple):
                 command_name, data = cmd
                 if command_name == '_new_sentence_started':
@@ -145,11 +147,13 @@ class WebLue(Lue):
                     })
                 elif command_name == 'seek':
                     c, p, s = data
+                    self.is_paused = False
                     self.chapter_idx, self.paragraph_idx, self.sentence_idx = c, p, s
                     self.ui_chapter_idx, self.ui_paragraph_idx, self.ui_sentence_idx = c, p, s
                     self._save_extended_progress(sync_audio_position=True)
                     self.pending_restart_task = asyncio.create_task(self._restart_audio_after_navigation())
                     await self.broadcast({"type": "clear_queue"})
+                    await self.broadcast({"type": "status", "is_paused": False})
                     
         await self._shutdown()
 

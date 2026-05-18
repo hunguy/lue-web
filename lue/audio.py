@@ -40,6 +40,15 @@ def clean_tts_text(text: str) -> str:
 
 async def stop_and_clear_audio(reader):
     """Stop audio playback and clear the audio queue."""
+    # Record resume offset before stopping
+    if getattr(reader, "current_word_start_time", 0) > 0:
+        elapsed = reader.loop.time() - reader.current_word_start_time
+        # Adjust for playback speed
+        reader.resume_offset = elapsed * reader.playback_speed
+        logging.info(f"[AUDIO] Paused at offset: {reader.resume_offset:.2f}s")
+    else:
+        reader.resume_offset = 0.0
+
     tasks_to_cancel = []
     for task in [reader.producer_task, reader.player_task]:
         if task and not task.done():
@@ -302,12 +311,27 @@ async def _player_loop(reader):
                     logging.warning(f"[AUDIO] Invalid duration {duration} for {audio_file}, size={size}. Using fallback 1.0s")
                     duration = 1.0
                 
+                # Check for resume offset
+                start_offset = 0.0
+                if getattr(reader, "resume_offset", 0.0) > 0.0:
+                    # Double check that we are actually resuming the correct sentence
+                    if c == reader.chapter_idx and p == reader.paragraph_idx and s == reader.sentence_idx:
+                        start_offset = reader.resume_offset
+                        logging.info(f"[AUDIO] Resuming {c}.{p}.{s} with offset {start_offset:.2f}s")
+                    else:
+                        logging.info(f"[AUDIO] Skipping resume offset for different sentence: current={reader.chapter_idx}.{reader.paragraph_idx}.{reader.sentence_idx}, queue={c}.{p}.{s}")
+                    reader.resume_offset = 0.0 # Always clear after checking
+                
+                is_resume = start_offset > 0.0
+
                 try:
                     # Post a command to the main loop to handle the state transition atomically
-                    reader.loop.call_soon_threadsafe(
-                        reader._post_command_sync,
-                        ('_new_sentence_started', (c, p, s, duration, timing_data, audio_file, generation))
-                    )
+                    # In web mode, if we are resuming, the frontend already has the audio and state.
+                    if not (is_resume and getattr(reader, "is_web", False)):
+                        reader.loop.call_soon_threadsafe(
+                            reader._post_command_sync,
+                            ('_new_sentence_started', (c, p, s, duration, timing_data, audio_file, generation))
+                        )
                 except RuntimeError:
                     reader.audio_queue.task_done()
                     break
@@ -315,7 +339,8 @@ async def _player_loop(reader):
                 if getattr(reader, 'is_web', False):
                     # In web mode, the frontend plays the audio.
                     # We still wait for the duration so the producer doesn't outpace us.
-                    await asyncio.sleep(duration / reader.playback_speed)
+                    reader.current_word_start_time = reader.loop.time() - (start_offset / reader.playback_speed)
+                    await asyncio.sleep(max(0, (duration - start_offset) / reader.playback_speed))
                     reader.audio_queue.task_done()
                     continue
 
@@ -323,6 +348,9 @@ async def _player_loop(reader):
                     # Build ffplay command with speed control using atempo filter
                     cmd = ['ffplay', '-nodisp', '-autoexit', '-loglevel', 'error']
                     
+                    if start_offset > 0.0:
+                        cmd.extend(['-ss', str(start_offset)])
+
                     # Add atempo filter if speed is not 1.0
                     if abs(reader.playback_speed - 1.0) > 0.01:
                         # atempo filter has limitations: must be between 0.5 and 2.0
@@ -346,6 +374,7 @@ async def _player_loop(reader):
                     cmd.append(audio_file)
                     process = await asyncio.create_subprocess_exec(*cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                     reader.playback_processes.append(process)
+                    reader.current_word_start_time = reader.loop.time() - (start_offset / reader.playback_speed)
                 except Exception:
                     reader.audio_queue.task_done()
                     continue
@@ -384,7 +413,7 @@ async def _player_loop(reader):
                 # At 3.00x speed and above: 0 overlap
                 # Linear decrease between 1.0x and 3.0x
                 speed = reader.playback_speed
-                if speed >= 3.0:
+                if speed >= 3.0 or is_resume:
                     overlap_seconds = 0.0
                 else:
                     # Calculate overlap as a linear function decreasing from base_overlap to 0
@@ -392,8 +421,8 @@ async def _player_loop(reader):
                     overlap_factor = max(0.0, min(1.0, (3.0 - speed) / (3.0 - 1.0)))
                     overlap_seconds = base_overlap * overlap_factor
                 
-                # Adjust duration for playback speed
-                actual_duration = duration / speed
+                # Adjust duration for playback speed and start offset
+                actual_duration = (duration - start_offset) / speed
                 
                 await asyncio.sleep(max(0.1, actual_duration - overlap_seconds))
                 reader.audio_queue.task_done()

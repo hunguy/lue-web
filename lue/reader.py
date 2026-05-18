@@ -45,6 +45,8 @@ class Lue:
         self.pending_restart_task = None
         self.playback_speed = 1.0  # Default speed multiplier
         self.audio_generation = 0
+        self.resume_offset = 0.0  # Offset to resume from within a sentence
+        self.current_word_start_time = 0.0 # Time when the current sentence started playing
         
         # Add pause toggle lock and task tracking
         self.pause_toggle_lock = asyncio.Lock()
@@ -121,6 +123,8 @@ class Lue:
         self._save_extended_progress()
         
         # Stop audio
+        self.current_word_start_time = 0.0
+        self.resume_offset = 0.0
         await audio.stop_and_clear_audio(self)
         
         # Update file path and title
@@ -833,6 +837,7 @@ class Lue:
         direction, mode = cmd.split('_')
         new_pos = self._advance_position(current_pos, mode) if direction == 'next' else self._rewind_position(current_pos, mode)
         if new_pos:
+            self.is_paused = False
             self.first_sentence_jump = False
             self.chapter_idx, self.paragraph_idx, self.sentence_idx = new_pos
             self.ui_chapter_idx, self.ui_paragraph_idx, self.ui_sentence_idx = new_pos
@@ -844,6 +849,7 @@ class Lue:
         direction, mode = cmd.split('_')
         new_pos = self._advance_position(current_pos, mode) if direction == 'next' else self._rewind_position(current_pos, mode)
         if new_pos:
+            self.is_paused = False
             self.first_sentence_jump = False
             self.chapter_idx, self.paragraph_idx, self.sentence_idx = new_pos
             self.ui_chapter_idx, self.ui_paragraph_idx, self.ui_sentence_idx = new_pos
@@ -875,6 +881,9 @@ class Lue:
                 except asyncio.CancelledError:
                     pass
             
+            # Reset resume offset for navigation
+            self.current_word_start_time = 0.0
+            self.resume_offset = 0.0
             await audio.stop_and_clear_audio(self)
             
             # Add a small delay to debounce rapid navigation
@@ -1062,7 +1071,8 @@ class Lue:
                     self.current_sentence_words and
                     self.current_sentence_duration > 0):
 
-                    elapsed = asyncio.get_event_loop().time() - self.current_word_start_time
+                    now = self.loop.time() if self.loop else asyncio.get_event_loop().time()
+                    elapsed = now - self.current_word_start_time
                     # Account for playback speed
                     adjusted_elapsed = elapsed * self.playback_speed
 
@@ -1314,7 +1324,10 @@ class Lue:
                     # but still preserves all text visually
                     self.current_sentence_words = [token for token in current_text.split() if re.search(r'[a-zA-Z0-9]', token)]
                     self.current_sentence_duration = timing_info.get("speech_duration") or duration
-                    self.current_word_start_time = asyncio.get_event_loop().time()
+                    if self.loop:
+                        self.current_word_start_time = self.loop.time()
+                    else:
+                        self.current_word_start_time = asyncio.get_event_loop().time()
                     
                     word_timings = timing_info.get("word_timings", [])
                     if word_timings:
@@ -1325,6 +1338,7 @@ class Lue:
                         self.current_word_mapping = None
                 elif command_name == 'click_jump':
                     if clicked_position := self._find_sentence_at_click(*data):
+                        self.is_paused = False
                         self.first_sentence_jump = False
                         self.chapter_idx, self.paragraph_idx, self.sentence_idx = clicked_position
                         self.ui_chapter_idx, self.ui_paragraph_idx, self.ui_sentence_idx = clicked_position

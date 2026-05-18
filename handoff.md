@@ -78,12 +78,15 @@ Frontend was using a 150ms timeout on `clear_queue` WebSocket messages, which co
   - **Auto-Play**: Opening a book now automatically starts playback, ensuring a seamless transition from library to reading.
 - **Support for .zip**: Added support for `.zip` files in the content parser, allowing them to be processed as EPUBs if they contain valid eBook structure.
 - **Interaction Polish**: Fixed swipe gestures with `dragActiveRef` to prevent accidental book opening.
-- **TTS Voice Selection (In Progress)**:
+- **TTS Voice Selection (Implemented)**:
   - Added `list_voices()` to `TTSBase` and implemented in `EdgeTTS` and `KokoroTTS`.
   - Added `/api/tts_voices` endpoint and `change_voice` WebSocket command.
-  - Frontend voice list UI added to `App.tsx` matching chapter list styling with grid layout (voice name + language/gender).
+  - Frontend voice list UI added to `App.tsx` matching chapter list styling (blurry background, no border, behind control panel).
   - Replaced `Volume2` icon with `MessageSquare` for voice toggle.
-  - **Known Issue**: Voice change may not produce audible difference; added backend logging to diagnose.
+  - Voice list format: single line per voice - `Name <sex-symbol> Language • Region` (e.g., "Sonia ♀︎ English • United Kingdom").
+  - Current voice indicated by white dot on the right.
+  - Hover effects isolated per icon (only hovered icon lights up, not both).
+  - **Known Issue**: Voice change may not produce audible difference; added backend logging (`[VOICE]`, `[RESTART]`, `[AUDIO]`) to diagnose.
 
 ## Development Workflow
 When making code changes, follow these steps to rebuild the application:
