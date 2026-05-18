@@ -407,7 +407,7 @@ export default function App() {
         behavior: distance > 300 ? 'instant' : 'smooth'
       });
     }
-  }, [currentSentenceIndex, isUserScrolling, windowStart]);
+  }, [currentSentenceIndex, isUserScrolling, windowStart, showChapterList]);
 
   const handleScroll = () => {
     setIsUserScrolling(true);
@@ -586,7 +586,7 @@ export default function App() {
         </div>
       </div>
       <div className="relative z-10 flex-1 overflow-hidden">
-        <AnimatePresence mode="wait">
+        <AnimatePresence>
           {showChapterList ? (
             <motion.div 
               key="chapter-list"

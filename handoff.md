@@ -70,5 +70,14 @@ Metadata overrides from `.progress.json` must be resolved *before* book content 
   - **Auto-Play**: Opening a book now automatically starts playback, ensuring a seamless transition from library to reading.
 - **Support for .zip**: Added support for `.zip` files in the content parser, allowing them to be processed as EPUBs if they contain valid eBook structure.
 - **Interaction Polish**: Fixed swipe gestures with `dragActiveRef` to prevent accidental book opening.
-- **Build Step**: Run `npm run build` in `lyricflow-ebook-reader` whenever React changes are made.
-- **Run**: `python -m lue --web` from the project root.
+
+## Development Workflow
+When making code changes, follow these steps to rebuild the application:
+1. **Frontend Changes**: If you modify files in `lyricflow-ebook-reader/src/`, you must rebuild the React app so the backend can serve the new static assets:
+   ```bash
+   cd lyricflow-ebook-reader
+   npm run build
+   ```
+2. **Backend Changes**: If you modify `.py` files in the `lue/` directory, simply restart the Python server.
+3. **Run Locally**: `python -m lue --web` from the project root.
+4. **Docker Rebuild**: If using Docker, rebuild both layers with `docker-compose up -d --build`.
