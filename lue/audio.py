@@ -208,6 +208,8 @@ async def _producer_loop(reader):
                     continue
 
                 timing_info = None
+                voice = getattr(reader.tts_model, 'voice', 'unknown')
+                logging.info(f"[AUDIO] Generating audio with voice={voice} for: '{original_text[:50]}...'")
                 
                 # Use the timing-aware method if available
                 if hasattr(reader.tts_model, 'generate_audio_with_timing'):

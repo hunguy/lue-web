@@ -4,7 +4,6 @@ import {
   Pause, 
   SkipBack, 
   SkipForward, 
-  Volume2, 
   MessageSquare, 
   Share2, 
   ListMusic,
@@ -25,7 +24,24 @@ const formatTime = (seconds: number) => {
   return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
 };
 
-const Word = memo(({ 
+const EDGE_VOICES = [
+  { name: 'vi-VN-HoaiMyNeural', display_name: 'HoaiMy', language: 'Vietnamese (Vietnam)', gender: 'Female' },
+  { name: 'vi-VN-NamMinhNeural', display_name: 'NamMinh', language: 'Vietnamese (Vietnam)', gender: 'Male' },
+  { name: 'en-GB-RyanNeural', display_name: 'Ryan', language: 'English (United Kingdom)', gender: 'Male' },
+  { name: 'en-GB-SoniaNeural', display_name: 'Sonia', language: 'English (United Kingdom)', gender: 'Female' },
+  { name: 'en-GB-ThomasNeural', display_name: 'Thomas', language: 'English (United Kingdom)', gender: 'Male' },
+  { name: 'en-US-ChristopherNeural', display_name: 'Christopher', language: 'English (United States)', gender: 'Male' },
+  { name: 'en-US-EricNeural', display_name: 'Eric', language: 'English (United States)', gender: 'Male' },
+  { name: 'en-US-GuyNeural', display_name: 'Guy', language: 'English (United States)', gender: 'Male' },
+  { name: 'en-US-JennyNeural', display_name: 'Jenny', language: 'English (United States)', gender: 'Female' },
+  { name: 'en-US-MichelleNeural', display_name: 'Michelle', language: 'English (United States)', gender: 'Female' },
+  { name: 'en-US-RogerNeural', display_name: 'Roger', language: 'English (United States)', gender: 'Male' },
+  { name: 'en-US-SteffanNeural', display_name: 'Steffan', language: 'English (United States)', gender: 'Male' },
+  { name: 'en-AU-NatashaNeural', display_name: 'Natasha', language: 'English (Australia)', gender: 'Female' },
+  { name: 'en-AU-WilliamNeural', display_name: 'William', language: 'English (Australia)', gender: 'Male' },
+];
+
+const Word = memo(({  
   wordText, 
   isActive, 
   start, 
@@ -123,6 +139,8 @@ export default function App() {
   const [isUserScrolling, setIsUserScrolling] = useState(false);
   const [showControls, setShowControls] = useState(true);
   const [showChapterList, setShowChapterList] = useState(false);
+  const [showVoiceList, setShowVoiceList] = useState(false);
+  const [currentVoice, setCurrentVoice] = useState<string | null>(null);
   const [hoverTime, setHoverTime] = useState<number | null>(null);
   const [hoverPos, setHoverPos] = useState(0);
 
@@ -211,10 +229,10 @@ export default function App() {
       }
       
       setBookInfo(data);
+      setCurrentVoice(data.current_voice || null);
       setIsReading(true);
       setSentences([]);
       setWindowStart(0);
-      // Do not reset currentPos here, let WebSocket provide it
       setIsPlaying(true);
     } catch (err) {
       console.error(err);
@@ -260,12 +278,8 @@ export default function App() {
         });
         setCurrentPos({ c: data.c, p: data.p, s: data.s });
       } else if (data.type === 'clear_queue') {
-        if (clearQueueTimeoutRef.current) clearTimeout(clearQueueTimeoutRef.current);
-        clearQueueTimeoutRef.current = window.setTimeout(() => {
-          setCurrentTime(0);
-          setSentences(prev => prev.map(s => ({ ...s, audio_url: undefined, timing: undefined, duration: undefined })));
-          clearQueueTimeoutRef.current = null;
-        }, 150);
+        setCurrentTime(0);
+        setSentences(prev => prev.map(s => ({ ...s, audio_url: undefined, timing: undefined, duration: undefined })));
       } else if (data.type === 'status') {
         if (data.is_paused) {
           setIsPlaying(false);
@@ -274,6 +288,8 @@ export default function App() {
           setIsPlaying(true);
           audioRef.current?.play().catch(e => console.error(e));
         }
+      } else if (data.type === 'voice_changed') {
+        setCurrentVoice(data.voice);
       }
     };
     
@@ -387,7 +403,7 @@ export default function App() {
     return () => {
       if (hideControlsTimeoutRef.current) clearTimeout(hideControlsTimeoutRef.current);
     };
-  }, [isPlaying, showControls, showChapterList]);
+  }, [isPlaying, showControls, showChapterList, showVoiceList]);
 
   const useIsomorphicLayoutEffect = typeof window !== 'undefined' ? useLayoutEffect : useEffect;
 
@@ -407,7 +423,7 @@ export default function App() {
         behavior: distance > 300 ? 'instant' : 'smooth'
       });
     }
-  }, [currentSentenceIndex, isUserScrolling, windowStart, showChapterList]);
+  }, [currentSentenceIndex, isUserScrolling, windowStart, showChapterList, showVoiceList]);
 
   const handleScroll = () => {
     setIsUserScrolling(true);
@@ -588,7 +604,7 @@ export default function App() {
       <div className="relative z-10 flex-1 overflow-hidden">
         <AnimatePresence>
           {showChapterList ? (
-            <motion.div 
+            <motion.div
               key="chapter-list"
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
@@ -603,7 +619,7 @@ export default function App() {
               <div className="flex flex-col gap-2 pb-48">
                 <p className="text-white/40 text-[10px] font-bold uppercase tracking-[0.2em] mb-6 px-3">Chapters</p>
                 {bookInfo?.chapter_titles?.map((title: string, idx: number) => (
-                  <button 
+                  <button
                     key={idx}
                     onClick={() => handleChapterClick(idx)}
                     className="flex items-center gap-4 p-3 rounded-xl transition-all group hover:bg-white/5"
@@ -612,9 +628,9 @@ export default function App() {
                       {bookInfo?.cover_url ? (
                         <img src={bookInfo.cover_url} alt="Cover" className="w-full h-full object-cover" />
                       ) : (
-                        <span 
+                        <span
                           className="text-2xl font-black uppercase select-none"
-                          style={{ 
+                          style={{
                             color: 'transparent',
                             WebkitTextStroke: '1px rgba(255, 255, 255, 0.2)'
                           }}
@@ -649,8 +665,57 @@ export default function App() {
                 ))}
               </div>
             </motion.div>
+          ) : showVoiceList ? (
+            <motion.div
+              key="voice-list"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 20 }}
+              transition={{ duration: 0.4, ease: "easeOut" }}
+              className="absolute inset-0 z-10 overflow-y-auto px-10 md:px-20 py-8 scrollbar-hide"
+              style={{
+                maskImage: 'linear-gradient(to bottom, transparent 0%, black 15%, black 85%, transparent 100%)',
+                WebkitMaskImage: 'linear-gradient(to bottom, transparent 0%, black 15%, black 85%, transparent 100%)',
+              }}
+            >
+              <div className="flex flex-col gap-3 pb-48">
+                <p className="text-white/40 text-[10px] font-bold uppercase tracking-[0.2em] mb-6 px-3">Voices</p>
+                {EDGE_VOICES.map((voice: any) => {
+                  const isCurrent = voice.name === currentVoice;
+                  const langParts = voice.language.replace(')', '').split('(');
+                  const langLabel = langParts[0].trim();
+                  const country = langParts[1] ? langParts[1].trim() : '';
+                  const langDisplay = country ? `${langLabel} • ${country}` : langLabel;
+                  const sexSymbol = voice.gender === 'Female' ? '♀︎' : '♂︎';
+                  return (
+                    <button
+                      key={voice.name}
+                      onClick={() => {
+                        setShowVoiceList(false);
+                        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+                          wsRef.current.send(JSON.stringify({ command: 'change_voice', voice: voice.name }));
+                        }
+                        setCurrentVoice(voice.name);
+                      }}
+                      className={`flex items-center justify-between p-3 rounded-xl transition-all hover:bg-white/5 ${isCurrent ? 'text-white' : 'text-white/60'}`}
+                    >
+                      <div className="flex items-center gap-2 text-left min-w-0">
+                        <span className={`text-lg font-bold ${isCurrent ? 'text-white' : 'text-white/80'}`}>
+                          {voice.display_name || voice.name}
+                        </span>
+                        <span className="text-lg">{sexSymbol}</span>
+                        <span className="text-lg">{langDisplay}</span>
+                      </div>
+                      {isCurrent && (
+                        <div className="w-2 h-2 rounded-full bg-white shadow-[0_0_8px_white] flex-shrink-0" />
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </motion.div>
           ) : (
-            <motion.div 
+            <motion.div
               key="lyrics"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -686,12 +751,14 @@ export default function App() {
               setShowControls(false);
             } else if (showChapterList) {
               setShowChapterList(false);
+            } else if (showVoiceList) {
+              setShowVoiceList(false);
             } else {
               setShowControls(true);
             }
           }}
         >
-          { (showControls || showChapterList) ? (
+          { (showControls || showChapterList || showVoiceList) ? (
             <ChevronDown className="w-5 h-5 text-white/20 animate-bounce" />
           ) : (
             <ChevronUp className="w-5 h-5 text-white/20 animate-bounce" />
@@ -755,11 +822,20 @@ export default function App() {
                   <SkipForward className="w-8 h-8 fill-current" />
                 </button>
               </div>
-              <div className="flex items-center justify-between opacity-40 hover:opacity-100 transition-opacity mt-4 px-2">
-                <button className="hover:text-white transition-colors">
+              <div className="flex items-center justify-between mt-4 px-2">
+                <button
+                  className={`transition-colors ${showVoiceList ? 'text-white' : 'text-white/40 hover:text-white'}`}
+                  onClick={() => {
+                    setShowVoiceList(!showVoiceList);
+                    setShowChapterList(false);
+                  }}
+                >
                   <MessageSquare className="w-6 h-6" />
                 </button>
-                <button className={`transition-colors ${showChapterList ? 'text-white' : 'hover:text-white'}`} onClick={() => setShowChapterList(!showChapterList)}>
+                <button className={`transition-colors ${showChapterList ? 'text-white' : 'text-white/40 hover:text-white'}`} onClick={() => {
+                  setShowChapterList(!showChapterList);
+                  setShowVoiceList(false);
+                }}>
                   <ListMusic className="w-6 h-6" />
                 </button>
               </div>

@@ -37,6 +37,25 @@ class EdgeTTS(TTSBase):
             logging.error("'edge-tts' is not installed.")
             return False
 
+    async def list_voices(self) -> list[dict]:
+        """List available Edge TTS voices."""
+        if not self.initialized or not self.edge_tts:
+            return []
+        try:
+            voices = await self.edge_tts.list_voices()
+            return [
+                {
+                    "name": v["ShortName"],
+                    "display_name": v["FriendlyName"],
+                    "language": v["Locale"],
+                    "gender": v["Gender"],
+                }
+                for v in voices
+            ]
+        except Exception as e:
+            logging.error(f"Failed to list Edge TTS voices: {e}")
+            return []
+
     async def get_raw_timing_data(self, text: str, output_path: str):
         """
         Get raw word timing data from Edge TTS.

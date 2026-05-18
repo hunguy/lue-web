@@ -58,6 +58,14 @@ Metadata overrides from `.progress.json` must be resolved *before* book content 
 * **Fix**: Moved custom metadata resolution to the very top of `Lue._load_content`.
 * **Server Stability**: Replaced `sys.exit(1)` with `RuntimeError` and wrapped book instantiation in `web.py` to return 400 errors instead of crashing the process.
 
+### 7. Audio Restart & Voice Change
+When changing TTS voice mid-playback, the audio producer may still be generating with the old voice if not properly restarted.
+* **Fix**: Backend increments `audio_generation` counter, cancels old restart tasks, calls `stop_and_clear_audio()`, then `play_from_current_position()`. Added extensive logging (`[VOICE]`, `[RESTART]`, `[AUDIO]`) to trace voice propagation.
+
+### 8. Queue Clearing Race Condition
+Frontend was using a 150ms timeout on `clear_queue` WebSocket messages, which could race with `new_sentence` arriving earlier and wipe out the new audio URL.
+* **Fix**: `clear_queue` now clears audio URLs immediately without timeout.
+
 ## Current State & Recent UI Updates
 - **Bookshelf Redesign**: 
   - **Swipe-to-Reveal**: Redesigned to physically push the book item off-screen to reveal Edit/Delete buttons in the same row (Apple Mail style).
@@ -70,6 +78,12 @@ Metadata overrides from `.progress.json` must be resolved *before* book content 
   - **Auto-Play**: Opening a book now automatically starts playback, ensuring a seamless transition from library to reading.
 - **Support for .zip**: Added support for `.zip` files in the content parser, allowing them to be processed as EPUBs if they contain valid eBook structure.
 - **Interaction Polish**: Fixed swipe gestures with `dragActiveRef` to prevent accidental book opening.
+- **TTS Voice Selection (In Progress)**:
+  - Added `list_voices()` to `TTSBase` and implemented in `EdgeTTS` and `KokoroTTS`.
+  - Added `/api/tts_voices` endpoint and `change_voice` WebSocket command.
+  - Frontend voice list UI added to `App.tsx` matching chapter list styling with grid layout (voice name + language/gender).
+  - Replaced `Volume2` icon with `MessageSquare` for voice toggle.
+  - **Known Issue**: Voice change may not produce audible difference; added backend logging to diagnose.
 
 ## Development Workflow
 When making code changes, follow these steps to rebuild the application:

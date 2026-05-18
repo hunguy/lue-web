@@ -863,6 +863,7 @@ class Lue:
         """Restart audio after navigation, preventing concurrent executions."""
         async with self.audio_restart_lock:
             self.audio_generation += 1
+            logging.info(f"[RESTART] audio_generation={self.audio_generation}, voice={self.tts_model.voice if self.tts_model else 'none'}")
             current_task = asyncio.current_task()
             old_restart_task = self.pending_restart_task
             if (old_restart_task and
@@ -881,7 +882,10 @@ class Lue:
             
             # Check if we're still running and not paused after the delay
             if not self.is_paused and self.running:
+                logging.info(f"[RESTART] Starting audio with voice={self.tts_model.voice if self.tts_model else 'none'}")
                 await audio.play_from_current_position(self)
+            else:
+                logging.info(f"[RESTART] Skipped restart: is_paused={self.is_paused}, running={self.running}")
 
     def _handle_page_scroll_immediate(self, direction):
         self.auto_scroll_enabled = False

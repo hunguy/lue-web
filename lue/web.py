@@ -256,7 +256,8 @@ async def open_book(request: Request):
         "author": active_reader.book_author,
         "chapters": len(active_reader.chapters),
         "chapter_titles": active_reader.chapter_titles,
-        "cover_url": progress_manager.get_book_cover_url(file_path)
+        "cover_url": progress_manager.get_book_cover_url(file_path),
+        "current_voice": active_reader.tts_model.voice if active_reader.tts_model else None
     }
 
 @app.get("/api/book_info")
@@ -271,12 +272,20 @@ async def book_info():
         "total_sentences": active_reader.total_sentences,
         "is_paused": active_reader.is_paused,
         "cover_url": progress_manager.get_book_cover_url(active_reader.file_path),
+        "current_voice": active_reader.tts_model.voice if active_reader.tts_model else None,
         "current_position": {
             "c": active_reader.chapter_idx,
             "p": active_reader.paragraph_idx,
             "s": active_reader.sentence_idx
         }
     }
+
+@app.get("/api/tts_voices")
+async def get_tts_voices():
+    if not active_reader or not active_reader.tts_model:
+        return {"voices": []}
+    voices = await active_reader.tts_model.list_voices()
+    return {"voices": voices, "current_voice": active_reader.tts_model.voice}
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
@@ -323,6 +332,26 @@ async def websocket_endpoint(websocket: WebSocket):
                         "current_p": active_reader.paragraph_idx,
                         "current_s": active_reader.sentence_idx
                     })
+                elif cmd == "change_voice":
+                    voice = data.get("voice")
+                    if voice and active_reader.tts_model:
+                        old_voice = active_reader.tts_model.voice
+                        active_reader.tts_model.voice = voice
+                        active_reader.tts_voice = voice
+                        try:
+                            progress_manager.update_book_metadata(
+                                active_reader.file_path,
+                                voice=voice
+                            )
+                        except Exception as e:
+                            logging.error(f"[VOICE] Failed to save voice metadata: {e}")
+                        logging.info(f"[VOICE] Changed voice from {old_voice} to {voice}, restarting audio")
+                        active_reader.pending_restart_task = asyncio.create_task(active_reader._restart_audio_after_navigation())
+                        await active_reader.broadcast({"type": "clear_queue"})
+                        await active_reader.broadcast({
+                            "type": "voice_changed",
+                            "voice": voice
+                        })
     except WebSocketDisconnect:
         active_connections.remove(websocket)
         if active_reader and websocket in active_reader.websockets:
