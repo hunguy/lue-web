@@ -63,6 +63,27 @@ class KokoroTTS(TTSBase):
         except Exception as e:
             logging.warning(f"Failed to patch Hugging Face downloader: {e}")
 
+    async def list_voices(self) -> list[dict]:
+        """List available Kokoro TTS voices."""
+        return [
+            {"name": "af_heart", "display_name": "Heart", "language": "en-US", "gender": "Female"},
+            {"name": "af_alloy", "display_name": "Alloy", "language": "en-US", "gender": "Female"},
+            {"name": "af_bella", "display_name": "Bella", "language": "en-US", "gender": "Female"},
+            {"name": "af_jessica", "display_name": "Jessica", "language": "en-US", "gender": "Female"},
+            {"name": "af_nicole", "display_name": "Nicole", "language": "en-US", "gender": "Female"},
+            {"name": "af_sarah", "display_name": "Sarah", "language": "en-US", "gender": "Female"},
+            {"name": "af_sky", "display_name": "Sky", "language": "en-US", "gender": "Female"},
+            {"name": "am_adam", "display_name": "Adam", "language": "en-US", "gender": "Male"},
+            {"name": "am_echo", "display_name": "Echo", "language": "en-US", "gender": "Male"},
+            {"name": "am_eric", "display_name": "Eric", "language": "en-US", "gender": "Male"},
+            {"name": "am_fenrir", "display_name": "Fenrir", "language": "en-US", "gender": "Male"},
+            {"name": "am_liam", "display_name": "Liam", "language": "en-US", "gender": "Male"},
+            {"name": "am_michael", "display_name": "Michael", "language": "en-US", "gender": "Male"},
+            {"name": "am_onyx", "display_name": "Onyx", "language": "en-US", "gender": "Male"},
+            {"name": "am_puck", "display_name": "Puck", "language": "en-US", "gender": "Male"},
+            {"name": "am_santa", "display_name": "Santa", "language": "en-US", "gender": "Male"},
+        ]
+
     async def initialize(self) -> bool:
         """Initializes the Kokoro TTS pipeline asynchronously."""
         try:

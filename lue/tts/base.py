@@ -167,3 +167,16 @@ class TTSBase(ABC):
         """
         from .. import config
         return config.TTS_OVERLAP_SECONDS.get(self.name)
+
+    async def list_voices(self) -> list[dict]:
+        """
+        List available voices for this TTS model.
+        
+        Returns:
+            list[dict]: List of voice dictionaries with keys like:
+                - name: Voice identifier/short name
+                - language: Language code or name
+                - gender: Male/Female/Neutral
+                - display_name: Human-readable name (optional)
+        """
+        return []
