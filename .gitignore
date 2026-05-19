@@ -1,4 +1,8 @@
 .sisyphus/
+.code-graph
+.lean-ctx
+.memory
+.smallcode
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
